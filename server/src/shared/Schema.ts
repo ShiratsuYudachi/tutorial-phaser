@@ -10,7 +10,17 @@ export interface InputData {
     tick: number;
 }
 
-export class Player extends Schema {
+export class Entity extends Schema{
+    @type("number") x: number;
+    @type("number") y: number;
+}
+
+export class HealthEntity extends Entity{
+    @type("number") hp: number;
+    @type("number") maxHP: number;
+}
+
+export class Player extends HealthEntity {
     @type("number") x: number;
     @type("number") y: number;
     @type("number") tick: number;
@@ -19,17 +29,22 @@ export class Player extends Schema {
     inputQueue: InputData[] = [];
 }
 
-export class Bullet extends Schema {
-    @type("number") x: number;
-    @type("number") y: number;
+export class Bullet extends Entity {
     @type("number") velocityX: number;
     @type("number") velocityY: number;
     @type("string") ownerId: string;
+}
+export class Block extends HealthEntity {
+    
+}
+
+export class Bed extends HealthEntity {
+    @type("string") teamId: string;
 }
 
 export class GameState extends Schema {
     @type("number") mapWidth: number;
     @type("number") mapHeight: number;
-    @type({ map: Player }) players = new MapSchema<Player>();
-    @type({ map: Bullet }) bullets = new MapSchema<Bullet>();
+    @type({ map: Entity }) entities = new MapSchema<Entity>();
+    
 }
