@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Colyseus + Phaser (Refactored)</title>
+    <style>* {
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  color: #eee;
+  background: #111;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  font-family: Trebuchet MS, Lucida Sans Unicode, Lucida Grande, Lucida Sans, Arial, sans-serif;
+  display: flex;
+}
+
+div.menu {
+  box-sizing: border-box;
+  background: #333;
+  border-radius: 8px;
+  justify-content: space-between;
+  align-items: center;
+  width: 800px;
+  margin-bottom: 10px;
+  padding: 1em;
+  display: flex;
+}
+
+#phaser-example {
+  box-shadow: 0 0 20px #00000080;
+}
+
+label {
+  margin-right: 10px;
+}
+</style>
+</head>
+<body>
+
+    <div class="menu">
+        <div>
+            <strong>Game Controls:</strong> Arrows to Move, SPACE to Shoot
+        </div>
+
+        <div>
+            <label for="latency">Latency Simulation:</label>
+            <input type="range" min="0" max="500" value="0" id="latency">
+            <span id="latency-value">0 ms</span>
+        </div>
+    </div>
+
+    <div id="phaser-example"></div>
+
+    <script src="/index.b71e74eb.js" defer=""></script>
+
+</body>
+</html>
