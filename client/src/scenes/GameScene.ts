@@ -30,7 +30,7 @@ export class GameScene extends Phaser.Scene {
     constructor() { super({ key: "game" }); }
 
     preload() {
-        this.load.image('ship_0001', 'assets/ship_0001.png');
+        // No assets to preload for now
     }
 
     async create() {
@@ -42,9 +42,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     createMap() {
-        this.add.rectangle(GAME_CONFIG.mapWidth/2, GAME_CONFIG.mapHeight/2, 
+        this.add.rectangle(GAME_CONFIG.mapWidth / 2, GAME_CONFIG.mapHeight / 2,
             GAME_CONFIG.mapWidth, GAME_CONFIG.mapHeight).setStrokeStyle(4, 0xffffff);
-            
+
         const graphics = this.add.graphics();
         graphics.fillStyle(0x888888, 1);
         WALLS.forEach(wall => graphics.fillRect(wall.x, wall.y, wall.width, wall.height));
@@ -74,7 +74,7 @@ export class GameScene extends Phaser.Scene {
 
                 if (visual) {
                     this.entityVisuals.set(id, visual);
-                    
+
                     // --- 2. 监听数据变化 (统一处理位置同步) ---
                     $(entity).onChange(() => {
                         visual.setData('serverX', entity.x);
@@ -98,19 +98,26 @@ export class GameScene extends Phaser.Scene {
 
     createPlayer(player: Player, id: string) {
         const container = this.add.container(player.x, player.y);
-        const ship = this.add.image(0, 0, 'ship_0001');
-        ship.setOrigin(0.5, 0.5);
+
+        // Draw a simple triangle ship
+        const ship = this.add.graphics();
+
+        // Color based on ID (self vs others)
+        const color = (id === this.room.sessionId) ? 0x00ff00 : 0xff0000;
+
+        ship.fillStyle(color, 1);
+        // Draw a triangle pointing right (0 degrees)
+        // Tip: (0,0) is center. 
+        // Points: Tip(15, 0), BackLeft(-10, -10), BackRight(-10, 10)
+        ship.fillTriangle(15, 0, -10, -10, -10, 10);
+
         container.add(ship);
 
-        // 简单区分一下自己
         if (id === this.room.sessionId) {
-            ship.setTint(0x00ff00);
             this.currentPlayerId = id;
             this.cameras.main.startFollow(container);
-        } else {
-            ship.setTint(0xff0000);
         }
-        
+
         return container;
     }
 
@@ -150,7 +157,7 @@ export class GameScene extends Phaser.Scene {
 
     fixedTick() {
         this.currentTick++;
-        
+
         this.inputPayload.left = this.cursorKeys.left.isDown;
         this.inputPayload.right = this.cursorKeys.right.isDown;
         this.inputPayload.up = this.cursorKeys.up.isDown;
