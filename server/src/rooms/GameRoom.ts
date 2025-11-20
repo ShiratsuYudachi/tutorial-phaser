@@ -174,6 +174,7 @@ export class GameRoom extends Room<GameState> {
 
         player.x = x;
         player.y = y;
+        console.log(`Spawning player ${client.sessionId} at ${x}, ${y}`);
 
         this.state.entities.set(client.sessionId, player);
 

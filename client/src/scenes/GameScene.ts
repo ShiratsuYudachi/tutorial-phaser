@@ -54,6 +54,7 @@ export class GameScene extends Phaser.Scene {
         const client = new Client(BACKEND_URL);
         try {
             this.room = await client.joinOrCreate<GameState>("game_room", {});
+            console.log("Connected to room:", this.room.name);
             const state = this.room.state;
             const $ = getStateCallbacks(this.room);
 
@@ -62,10 +63,10 @@ export class GameScene extends Phaser.Scene {
                 let visual;
 
                 // --- 1. 判断类型并创建 ---
-                if (entity instanceof Player) {
-                    visual = this.createPlayer(entity, id);
-                } else if (entity instanceof Bullet) {
-                    visual = this.createBullet(entity);
+                if (entity instanceof Player || entity.type === 'player') {
+                    visual = this.createPlayer(entity as Player, id);
+                } else if (entity instanceof Bullet || entity.type === 'bullet') {
+                    visual = this.createBullet(entity as Bullet);
                 } else if (entity instanceof Block) {
                     visual = this.createBlock(entity);
                 } else if (entity instanceof Bed) {
@@ -97,6 +98,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     createPlayer(player: Player, id: string) {
+        console.log(`Creating player ${id} at ${player.x}, ${player.y}`);
         const container = this.add.container(player.x, player.y);
 
         // Draw a simple triangle ship
