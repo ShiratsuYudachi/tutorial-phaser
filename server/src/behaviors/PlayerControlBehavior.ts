@@ -5,9 +5,9 @@ import { GAME_CONFIG, COLLISION_CATEGORIES } from "../shared/Constants";
 import Matter from "matter-js";
 import { Bullet } from "../shared/Schema";
 
-export class PlayerControlBehavior extends Behavior {
+export class PlayerControlBehavior extends Behavior<Player> {
     update(deltaTime: number) {
-        const player = this.agent.schema as Player;
+        const player = this.agent.schema;
         if (!player) return;
 
         let input: InputData;
@@ -51,8 +51,9 @@ export class PlayerControlBehavior extends Behavior {
 
         // Let's implement a callback for spawning bullets so we don't couple this behavior to the Room directly.
         if (this.onShoot) {
-            this.onShoot(this.agent.schema.sessionId, position); // Wait, schema doesn't have sessionId directly on Player, it's the key in the map.
-            // But we can store sessionId on the Agent or Player.
+            // We know this behavior is attached to a PlayerAgent which has a sessionId
+            const sessionId = (this.agent as any).sessionId;
+            this.onShoot(sessionId, position);
         }
     }
 

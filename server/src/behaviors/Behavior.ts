@@ -1,9 +1,9 @@
 import type { Agent } from "../entities/Agent";
 
-export abstract class Behavior {
-    agent: Agent;
+export abstract class Behavior<T = any> {
+    agent: Agent<T>;
 
-    constructor(agent: Agent) {
+    constructor(agent: Agent<T>) {
         this.agent = agent;
     }
 

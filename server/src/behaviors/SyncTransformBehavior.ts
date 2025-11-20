@@ -1,7 +1,7 @@
 import { Behavior } from "./Behavior";
 import { Entity } from "../shared/Schema";
 
-export class SyncTransformBehavior extends Behavior {
+export class SyncTransformBehavior extends Behavior<Entity> {
     postUpdate(deltaTime: number) {
         if (this.agent.body && this.agent.schema) {
             const entity = this.agent.schema as Entity;
