@@ -1,8 +1,7 @@
-
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
-import { GameState, Player, Bullet, InputData, Entity, Bed, Block } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType } from "../shared/Constants";
+import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem } from "../shared/Schema";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -260,12 +259,11 @@ export class GameRoom extends Room<GameState> {
         });
     }
 
-    spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number) {
+    spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponType) {
         const player = this.state.entities.get(ownerId) as Player;
         if (!player) return;
         
         // 获取当前武器配置
-        const weaponType = player.currentWeapon as WeaponType;
         const weaponConfig = WEAPON_CONFIG[weaponType] || WEAPON_CONFIG[WeaponType.BOW];
         
         const bulletId = Math.random().toString(36).substr(2, 9);
@@ -314,12 +312,17 @@ export class GameRoom extends Room<GameState> {
         const player = this.state.entities.get(playerId) as Player;
         if (!player) return;
         
-        // 检查背包中是否有该类型方块
-        const count = player.inventory.get(blockType) || 0;
-        if (count <= 0) {
-            console.log(`Player ${playerId} has no ${blockType} blocks`);
-            return;
+        // Find the specific slot index where the item is (so we subtract from the correct stack)
+        // Or since we just checked what was selected in behavior, we can trust selectedSlot
+        const slotIndex = player.selectedSlot;
+        const item = player.inventory.at(slotIndex);
+        
+        if (!item || item.itemId !== blockType || item.count <= 0) {
+             console.log(`Player ${playerId} has no ${blockType} blocks in slot ${slotIndex}`);
+             return;
         }
+
+        const count = item.count;
         
         // 对齐到网格
         const gridSize = GAME_CONFIG.gridSize;
@@ -374,9 +377,15 @@ export class GameRoom extends Room<GameState> {
         this.blockBodies.set(blockId, body);
         
         // 消耗方块
-        player.inventory.set(blockType, count - 1);
+        item.count = count - 1;
+        if (item.count <= 0) {
+            // Usually in MC you keep the empty slot or remove it.
+            // Let's keep it empty or just 0 count.
+            // item.itemId = null? No, schema is strict. 
+            // Just keeping count 0 is fine for now.
+        }
         
-        console.log(`Placed ${blockType} block at ${gridX}, ${gridY}. Remaining: ${count - 1}`);
+        console.log(`Placed ${blockType} block at ${gridX}, ${gridY}. Remaining: ${item.count}`);
     }
     
     removeBlock(blockId: string) {
@@ -437,12 +446,33 @@ export class GameRoom extends Room<GameState> {
         player.isDead = false;
         player.respawnTime = 0;
         
-        // 初始化背包
-        player.inventory.set(BlockType.WOOD, GAME_CONFIG.initialBlocks[BlockType.WOOD]);
-        player.inventory.set(BlockType.STONE, GAME_CONFIG.initialBlocks[BlockType.STONE]);
-        player.inventory.set(BlockType.DIAMOND, GAME_CONFIG.initialBlocks[BlockType.DIAMOND]);
-        player.selectedBlockType = BlockType.WOOD;
-        player.inBuildMode = false;
+        // 初始化背包 (HOTBAR)
+        // 1: Bow (Weapon)
+        // 2: Fireball (Weapon)
+        // 3: Dart (Weapon)
+        // 4: Wood (Block x 20)
+        // 5: Stone (Block x 10)
+        // 6: Diamond (Block x 5)
+        
+        const createItem = (id: string, count: number) => {
+            const item = new InventoryItem();
+            item.itemId = id;
+            item.count = count;
+            return item;
+        };
+
+        // Fill slots 0-5
+        player.inventory.push(createItem(WeaponType.BOW, 1));
+        player.inventory.push(createItem(WeaponType.FIREBALL, 1));
+        player.inventory.push(createItem(WeaponType.DART, 1));
+        player.inventory.push(createItem(BlockType.WOOD, GAME_CONFIG.initialBlocks[BlockType.WOOD]));
+        player.inventory.push(createItem(BlockType.STONE, GAME_CONFIG.initialBlocks[BlockType.STONE]));
+        player.inventory.push(createItem(BlockType.DIAMOND, GAME_CONFIG.initialBlocks[BlockType.DIAMOND]));
+
+        // Fill remaining with empty slots if needed, or just leave them null
+        // For now we just push valid items. Clients should render empty slots if array length < INVENTORY_SIZE
+        
+        player.selectedSlot = 0;
 
         // 根据队伍设置出生点
         const spawnPos = teamId === 'red' ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
@@ -458,8 +488,8 @@ export class GameRoom extends Room<GameState> {
             client.sessionId, 
             this.engine.world, 
             player, 
-            (ownerId, pos, aimAngle) => {
-                this.spawnBullet(ownerId, pos, aimAngle);
+            (ownerId, pos, aimAngle, weaponType) => {
+                this.spawnBullet(ownerId, pos, aimAngle, weaponType);
             },
             (playerId, x, y, blockType) => {
                 this.placeBlock(playerId, x, y, blockType);
@@ -478,4 +508,3 @@ export class GameRoom extends Room<GameState> {
         this.state.entities.delete(client.sessionId);
     }
 }
-

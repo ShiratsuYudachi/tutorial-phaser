@@ -3,7 +3,7 @@ import { Player } from "../shared/Schema";
 import { PlayerControlBehavior } from "../behaviors/PlayerControlBehavior";
 import { SyncTransformBehavior } from "../behaviors/SyncTransformBehavior";
 import Matter from "matter-js";
-import { GAME_CONFIG, COLLISION_CATEGORIES, BlockType } from "../shared/Constants";
+import { GAME_CONFIG, COLLISION_CATEGORIES, BlockType, WeaponType } from "../shared/Constants";
 
 export class PlayerAgent extends Agent<Player> {
     sessionId: string;
@@ -12,7 +12,7 @@ export class PlayerAgent extends Agent<Player> {
         sessionId: string, 
         world: Matter.World, 
         schema: Player, 
-        onShoot: (ownerId: string, pos: { x: number, y: number }, aimAngle: number) => void,
+        onShoot: (ownerId: string, pos: { x: number, y: number }, aimAngle: number, weaponType: WeaponType) => void,
         onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockType) => void
     ) {
         super(world, schema);
@@ -31,7 +31,7 @@ export class PlayerAgent extends Agent<Player> {
 
         // Add Behaviors
         const controlBehavior = new PlayerControlBehavior(this);
-        controlBehavior.onShoot = (ownerId, pos, aimAngle) => onShoot(this.sessionId, pos, aimAngle);
+        controlBehavior.onShoot = (ownerId, pos, aimAngle, weaponType) => onShoot(this.sessionId, pos, aimAngle, weaponType);
         controlBehavior.onPlaceBlock = (playerId, x, y, blockType) => onPlaceBlock(this.sessionId, x, y, blockType);
 
         this.addBehavior(controlBehavior);

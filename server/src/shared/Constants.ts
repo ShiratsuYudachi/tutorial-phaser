@@ -13,6 +13,20 @@ export enum BlockType {
     DIAMOND = 'diamond' // 钻石方块 - HP 200
 }
 
+
+export const INVENTORY_SIZE = 9;
+
+
+// 统一物品定义
+export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block', maxStack: number, name: string, color: number }> = {
+    [WeaponType.BOW]: { type: 'weapon', maxStack: 1, name: 'Bow', color: 0xffff00 },
+    [WeaponType.FIREBALL]: { type: 'weapon', maxStack: 1, name: 'Fireball', color: 0xff4500 },
+    [WeaponType.DART]: { type: 'weapon', maxStack: 1, name: 'Dart', color: 0x00ffff },
+    [BlockType.WOOD]: { type: 'block', maxStack: 64, name: 'Wood', color: 0x8B4513 },
+    [BlockType.STONE]: { type: 'block', maxStack: 64, name: 'Stone', color: 0x808080 },
+    [BlockType.DIAMOND]: { type: 'block', maxStack: 64, name: 'Diamond', color: 0x00CED1 }
+};
+
 // 武器配置
 export const WEAPON_CONFIG = {
     [WeaponType.BOW]: {
