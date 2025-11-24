@@ -1,52 +1,30 @@
-import React, { useEffect, useState } from "react";
-import { gameStore } from "./GameStore";
+import React, { useState } from "react";
+import { gameStore, useCurrentPlayer } from "./GameStore";
 import { ITEM_DEFINITIONS, INVENTORY_SIZE } from "../../../server/src/shared/Constants";
-import { InventoryItem, Player } from "../../../server/src/shared/Schema";
+import { Player } from "../../../server/src/shared/Schema";
 
 export const Inventory: React.FC = () => {
-    const [inventory, setInventory] = useState<InventoryItem[]>([]);
-    const [selectedSlot, setSelectedSlot] = useState(0);
+    const player = useCurrentPlayer();
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-    useEffect(() => {
-        const updateState = () => {
-            const player = gameStore.currentPlayer;
-            if (player && player instanceof Player) {
-                // Convert Colyseus ArraySchema to JS array for React state
-                setInventory([...player.inventory]);
-                setSelectedSlot(player.selectedSlot);
-            }
-        };
-
-        // Initial sync
-        updateState();
-
-        // Subscribe to changes
-        const unsubscribe = gameStore.subscribe(updateState);
-
-        return unsubscribe;
-    }, []);
+    const inventory = player && player instanceof Player ? [...player.inventory] : [];
+    const selectedSlot = player && player instanceof Player ? player.selectedSlot : 0;
 
     const handleSlotClick = (index: number) => {
         if (gameStore.room) {
             gameStore.room.send("inventory_action", { type: "select", index });
-            // Optimistic update
-            setSelectedSlot(index);
+            // No optimistic update needed, state sync handles it
         }
     };
+    console.log("Player:", player);
 
     const handleDragStart = (e: React.DragEvent, index: number) => {
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = "move";
-        // Set drag image or data if needed
+        
         const item = inventory[index];
         if (item && item.itemId) {
-             const def = ITEM_DEFINITIONS[item.itemId];
-             // Use a custom drag image if we want, for now default is fine
-             // but we can try to set the drag image to the icon
-             // const img = new Image();
-             // img.src = def.icon;
-             // e.dataTransfer.setDragImage(img, 25, 25);
+             // Optional: set custom drag image
         }
     };
 

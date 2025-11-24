@@ -210,13 +210,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     async connect() {
-        const client = new Client(BACKEND_URL);
         try {
-            this.room = await client.joinOrCreate<GameState>("game_room", {});
-            console.log("Connected to room:", this.room.name);
-            
-            // Initialize GameStore for React
-            gameStore.setRoom(this.room, this.room.sessionId);
+            // Connect via GameStore
+            this.room = await gameStore.connect();
             
             const state = this.room.state;
             const $ = getStateCallbacks(this.room);
@@ -224,22 +220,6 @@ export class GameScene extends Phaser.Scene {
             $(state).entities.onAdd((entity, id) => {
                 let visual;
                 
-                if (id === this.room.sessionId) {
-                    // Notify React on player changes
-                    gameStore.notify();
-                    if (entity instanceof Player || entity.type === 'player') {
-                        const p = entity as Player;
-                        
-                        $(p).onChange(() => gameStore.notify());
-                        
-                        // ArraySchema callbacks - casting to any to avoid TS issues with specific Colyseus versions
-                        const inv = p.inventory as any;
-                        if (inv.onAdd) inv.onAdd(() => gameStore.notify());
-                        if (inv.onRemove) inv.onRemove(() => gameStore.notify());
-                        if (inv.onChange) inv.onChange(() => gameStore.notify());
-                    }
-                }
-
                 if (entity instanceof Player || entity.type === 'player') {
                     visual = this.createPlayer(entity as Player, id);
                 } else if (entity instanceof Bullet || entity.type === 'bullet') {
