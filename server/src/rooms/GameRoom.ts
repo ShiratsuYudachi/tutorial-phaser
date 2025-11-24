@@ -2,6 +2,7 @@ import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem } from "../shared/Schema";
 import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, EntityType, TeamType } from "../shared/Constants";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, EntityType, TeamType, SpecialItemType } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -69,20 +70,32 @@ export class GameRoom extends Room<GameState> {
                 const slotIndex = data.index;
                 if (slotIndex >= 0 && slotIndex < player.inventory.length) {
                     player.selectedSlot = slotIndex;
+                    console.log(`Player ${client.sessionId} selected slot ${slotIndex}`);
                 }
             } else if (data.type === "swap") {
                 const { fromIndex, toIndex } = data;
-                if (fromIndex >= 0 && fromIndex < player.inventory.length &&
-                    toIndex >= 0 && toIndex < player.inventory.length) {
-                    
-                    const itemA = player.inventory[fromIndex];
-                    const itemB = player.inventory[toIndex];
-                    
-                    if (itemA && itemB) {
-                        player.inventory[fromIndex] = itemB;
-                        player.inventory[toIndex] = itemA;
-                    }
+                
+                // Validate indices
+                if (fromIndex < 0 || fromIndex >= player.inventory.length ||
+                    toIndex < 0 || toIndex >= player.inventory.length) {
+                    console.warn(`Invalid swap indices: ${fromIndex} -> ${toIndex}`);
+                    return;
                 }
+                
+                // Get items (may be undefined for empty slots)
+                const itemA = player.inventory[fromIndex];
+                const itemB = player.inventory[toIndex];
+                
+                console.log(`Swapping slots ${fromIndex} -> ${toIndex}`, {
+                    from: itemA ? `${itemA.itemId} x${itemA.count}` : 'empty',
+                    to: itemB ? `${itemB.itemId} x${itemB.count}` : 'empty'
+                });
+                
+                // Swap items (works even if one or both are undefined/empty)
+                player.inventory[fromIndex] = itemB;
+                player.inventory[toIndex] = itemA;
+                
+                console.log(`Swap complete`);
             }
         });
 
@@ -476,7 +489,8 @@ export class GameRoom extends Room<GameState> {
             return item;
         };
 
-        // Fill slots 0-5
+        
+        // Fill initial inventory items
         player.inventory.push(createItem(WeaponType.BOW, 1));
         player.inventory.push(createItem(WeaponType.FIREBALL, 1));
         player.inventory.push(createItem(WeaponType.DART, 1));
@@ -484,7 +498,10 @@ export class GameRoom extends Room<GameState> {
         player.inventory.push(createItem(BlockType.STONE, GAME_CONFIG.initialBlocks[BlockType.STONE]));
         player.inventory.push(createItem(BlockType.DIAMOND, GAME_CONFIG.initialBlocks[BlockType.DIAMOND]));
 
-        // Fill remaining with empty slots if needed
+        // Fill remaining slots with empty items
+        while (player.inventory.length < INVENTORY_SIZE) {
+            player.inventory.push(createItem(SpecialItemType.EMPTY, 0));
+        }
         
         player.selectedSlot = 0;
 

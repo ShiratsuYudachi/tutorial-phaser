@@ -1,4 +1,9 @@
 
+// 特殊物品类型
+export enum SpecialItemType {
+    EMPTY = 'empty'     // 空格子占位符
+}
+
 // 武器类型枚举
 export enum WeaponType {
     BOW = 'bow',        // 弓箭 - 中等射程、中等伤害
@@ -13,7 +18,7 @@ export enum BlockType {
     DIAMOND = 'diamond' // 钻石方块 - HP 200
 }
 
-export type ItemType = WeaponType | BlockType;
+export type ItemType = WeaponType | BlockType | SpecialItemType;
 
 // 实体类型枚举
 export enum EntityType {
@@ -32,7 +37,8 @@ export enum TeamType {
 export const INVENTORY_SIZE = 9;
 
 // 统一物品定义
-export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block', maxStack: number, name: string, color: number, icon: string }> = {
+export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block' | 'special', maxStack: number, name: string, color: number, icon: string }> = {
+    [SpecialItemType.EMPTY]: { type: 'special', maxStack: 0, name: 'Empty', color: 0x000000, icon: '' },
     [WeaponType.BOW]: { type: 'weapon', maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow' },
     [WeaponType.FIREBALL]: { type: 'weapon', maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball' },
     [WeaponType.DART]: { type: 'weapon', maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers' },

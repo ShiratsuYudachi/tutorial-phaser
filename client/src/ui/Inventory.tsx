@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Icon } from "@iconify/react";
 import { gameStore, useCurrentPlayer } from "./GameStore";
-import { ITEM_DEFINITIONS, INVENTORY_SIZE } from "../../../server/src/shared/Constants";
+import { ITEM_DEFINITIONS, INVENTORY_SIZE, SpecialItemType } from "../../../server/src/shared/Constants";
 
 export const Inventory: React.FC = () => {
     const player = useCurrentPlayer();
@@ -18,13 +18,16 @@ export const Inventory: React.FC = () => {
     };
 
     const handleDragStart = (e: React.DragEvent, index: number) => {
+        const item = inventory[index];
+        // Only allow dragging if there's a real item (not empty)
+        if (!item || !item.itemId || item.itemId === SpecialItemType.EMPTY) {
+            e.preventDefault();
+            return;
+        }
+        
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = "move";
-        
-        const item = inventory[index];
-        if (item && item.itemId) {
-             // Optional: set custom drag image
-        }
+        console.log(`Drag started from slot ${index}`);
     };
 
     const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -34,10 +37,17 @@ export const Inventory: React.FC = () => {
 
     const handleDrop = (e: React.DragEvent, toIndex: number) => {
         e.preventDefault();
-        if (draggedIndex === null) return;
+        
+        if (draggedIndex === null) {
+            console.warn("Drop without draggedIndex");
+            return;
+        }
+        
+        console.log(`Drop: ${draggedIndex} -> ${toIndex}`);
         
         if (draggedIndex !== toIndex) {
             if (gameStore.room) {
+                console.log(`Sending swap: ${draggedIndex} -> ${toIndex}`);
                 gameStore.room.send("inventory_action", { 
                     type: "swap", 
                     fromIndex: draggedIndex, 
@@ -45,6 +55,11 @@ export const Inventory: React.FC = () => {
                 });
             }
         }
+        setDraggedIndex(null);
+    };
+
+    const handleDragEnd = () => {
+        // Clean up drag state even if drop didn't happen
         setDraggedIndex(null);
     };
 
@@ -60,17 +75,19 @@ export const Inventory: React.FC = () => {
         }}>
             {Array.from({ length: INVENTORY_SIZE }).map((_, index) => {
                 const item = inventory[index];
-                // Safety check: ITEM_DEFINITIONS might not have the key if server sent bad data
-                const def = item && item.itemId ? ITEM_DEFINITIONS[item.itemId] : null;
+                // Check if item is empty or not present
+                const isEmpty = !item || !item.itemId || item.itemId === SpecialItemType.EMPTY;
+                const def = !isEmpty ? ITEM_DEFINITIONS[item.itemId] : null;
                 const isSelected = selectedSlot === index;
 
                 return (
                     <div
                         key={index}
-                        draggable={!!item && !!item.itemId} // Only draggable if has item
+                        draggable={!isEmpty}
                         onDragStart={(e) => handleDragStart(e, index)}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDrop={(e) => handleDrop(e, index)}
+                        onDragEnd={handleDragEnd}
                         onClick={() => handleSlotClick(index)}
                         style={{
                             width: '50px',

@@ -4,7 +4,7 @@ import { BACKEND_URL } from "../backend";
 
 import type { GameState } from "../../../server/src/shared/Schema";
 import { Player, Bullet, Block, Bed, Entity } from "../../../server/src/shared/Schema";
-import { GAME_CONFIG, WALLS, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, ITEM_DEFINITIONS } from "../../../server/src/shared/Constants";
+import { GAME_CONFIG, WALLS, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, ITEM_DEFINITIONS, SpecialItemType } from "../../../server/src/shared/Constants";
 import { InputData } from "../../../server/src/shared/Schema";
 
 import { gameStore } from "../ui/GameStore";
@@ -466,7 +466,9 @@ export class GameScene extends Phaser.Scene {
             // Determine if we should show block preview
             const selectedSlotIndex = player.selectedSlot;
             const selectedItem = player.inventory[selectedSlotIndex];
-            const itemDef = selectedItem ? ITEM_DEFINITIONS[selectedItem.itemId] : null;
+            // Check if item is valid and not empty
+            const isValidItem = selectedItem && selectedItem.itemId && selectedItem.itemId !== SpecialItemType.EMPTY;
+            const itemDef = isValidItem ? ITEM_DEFINITIONS[selectedItem.itemId] : null;
             
             if (itemDef && itemDef.type === 'block') {
                  // Block Preview Logic
