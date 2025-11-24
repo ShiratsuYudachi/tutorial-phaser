@@ -211,8 +211,11 @@ export class GameScene extends Phaser.Scene {
 
     async connect() {
         try {
-            // Connect via GameStore
+            // Connect via GameStore and wait for it to be ready
             this.room = await gameStore.connect();
+            
+            // GameStore has already set up its own listeners
+            // We just need to set up Phaser-specific visual listeners
             
             const state = this.room.state;
             const $ = getStateCallbacks(this.room);
@@ -518,8 +521,13 @@ export class GameScene extends Phaser.Scene {
     fixedTick() {
         this.currentTick++;
         
+        // Safety check: ensure room and state are ready
+        if (!this.room || !this.room.state || !this.room.state.entities) {
+            return;
+        }
+        
         const player = this.room.state.entities.get(this.currentPlayerId) as Player;
-        if (player && player.isDead) {
+        if (!player || player.isDead) {
             return;
         }
 
