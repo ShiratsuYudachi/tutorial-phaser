@@ -6,6 +6,7 @@ import { ITEM_DEFINITIONS, INVENTORY_SIZE, ItemType } from "../../../server/src/
 export const Inventory: React.FC = () => {
     const player = useCurrentPlayer();
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+    const [isDraggingOutside, setIsDraggingOutside] = useState(false);
 
     const inventory = player && player.inventory ? Array.from(player.inventory) : [];
     const selectedSlot = player ? player.selectedSlot : 0;
@@ -58,21 +59,67 @@ export const Inventory: React.FC = () => {
         setDraggedIndex(null);
     };
 
-    const handleDragEnd = () => {
-        // Clean up drag state even if drop didn't happen
+    const handleDragEnd = (e: React.DragEvent) => {
+        console.log(`DragEnd: draggedIndex=${draggedIndex}, isDraggingOutside=${isDraggingOutside}`);
+        
+        // If dragged outside inventory (not dropped on a slot), drop the item
+        if (draggedIndex !== null && isDraggingOutside) {
+            const item = inventory[draggedIndex];
+            console.log(`Checking item at slot ${draggedIndex}:`, item);
+            if (item && item.itemId !== ItemType.EMPTY && item.count > 0) {
+                if (gameStore.room) {
+                    console.log(`Dropping item from slot ${draggedIndex} outside inventory: ${item.itemId} x${item.count}`);
+                    gameStore.room.send("drop_item", { slotIndex: draggedIndex });
+                }
+            } else {
+                console.warn(`Cannot drop: item is empty or invalid`, item);
+            }
+        }
+        
+        // Clean up drag state
         setDraggedIndex(null);
+        setIsDraggingOutside(false);
+    };
+
+    const handleInventoryDragLeave = (e: React.DragEvent) => {
+        // Only set isDraggingOutside to true if we're leaving the entire inventory container
+        // Check if the related target is outside the inventory
+        const inventoryElement = e.currentTarget;
+        const relatedTarget = e.relatedTarget as Node;
+        
+        if (!relatedTarget || !inventoryElement.contains(relatedTarget)) {
+            setIsDraggingOutside(true);
+            console.log(`Dragging outside inventory`);
+        }
+    };
+
+    const handleInventoryDragEnter = (e: React.DragEvent) => {
+        // Only set isDraggingOutside to false if we're entering from outside
+        const inventoryElement = e.currentTarget;
+        const relatedTarget = e.relatedTarget as Node;
+        
+        if (!relatedTarget || !inventoryElement.contains(relatedTarget)) {
+            setIsDraggingOutside(false);
+            console.log(`Dragging back inside inventory`);
+        }
     };
 
     return (
-        <div style={{
-            display: 'flex',
-            gap: '5px',
-            background: 'rgba(0, 0, 0, 0.7)', // Darker background for better contrast
-            padding: '10px',
-            borderRadius: '12px', // More rounded corners
-            pointerEvents: 'auto',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
-        }}>
+        <div 
+            onDragLeave={handleInventoryDragLeave}
+            onDragEnter={handleInventoryDragEnter}
+            style={{
+                display: 'flex',
+                gap: '5px',
+                background: isDraggingOutside ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.7)',
+                padding: '10px',
+                borderRadius: '12px',
+                pointerEvents: 'auto',
+                boxShadow: isDraggingOutside ? '0 0 20px rgba(255, 0, 0, 0.5)' : '0 4px 6px rgba(0,0,0,0.3)',
+                transition: 'all 0.2s ease',
+                border: isDraggingOutside ? '2px solid rgba(255, 0, 0, 0.8)' : '2px solid transparent'
+            }}
+        >
             {Array.from({ length: INVENTORY_SIZE }).map((_, index) => {
                 const item = inventory[index];
                 // Check if item is empty or not present

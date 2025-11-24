@@ -98,6 +98,14 @@ export class GameRoom extends Room<GameState> {
             }
         });
 
+        // Drop Item (from UI drag-and-drop)
+        this.onMessage("drop_item", (client, data: { slotIndex: number }) => {
+            const player = this.state.entities.get(client.sessionId) as Player;
+            if (!player) return;
+
+            this.dropItemFromSlot(client.sessionId, player, data.slotIndex);
+        });
+
         // Shop Trade
         this.onMessage("shop_trade", (client, data: { tradeId: string }) => {
             const player = this.state.entities.get(client.sessionId) as Player;
@@ -183,14 +191,6 @@ export class GameRoom extends Room<GameState> {
             }
 
             console.log(`Shop trade complete: ${trade.name}`);
-        });
-
-        // Drop Item Message (manual drop via message)
-        this.onMessage("drop_item", (client, data: { slotIndex: number }) => {
-            const player = this.state.entities.get(client.sessionId) as Player;
-            if (!player || player.isDead) return;
-
-            this.dropItemFromSlot(player, data.slotIndex);
         });
 
         // Create resource generators for testing
@@ -633,10 +633,10 @@ export class GameRoom extends Room<GameState> {
             (playerId, x, y, blockType) => {
                 this.placeBlock(playerId, x, y, blockType);
             },
-            (playerId, slotIndex) => {
+            (playerId, slotIndex, mouseX, mouseY) => {
                 const player = this.state.entities.get(playerId) as Player;
                 if (player) {
-                    this.dropItemFromSlot(player, slotIndex);
+                    this.dropItemFromSlot(playerId, player, slotIndex, mouseX, mouseY);
                 }
             }
         );
@@ -657,28 +657,66 @@ export class GameRoom extends Room<GameState> {
 
     /**
      * Drop an item from player's inventory slot
+     * By default drops 1 item, or entire stack if dropAll is true
+     * Uses mouse position to determine drop direction (like shooting)
      */
-    dropItemFromSlot(player: Player, slotIndex: number) {
-        if (slotIndex < 0 || slotIndex >= player.inventory.length) return;
+    dropItemFromSlot(sessionId: string, player: Player, slotIndex: number, mouseX?: number, mouseY?: number, dropAll: boolean = false) {
+        if (slotIndex < 0 || slotIndex >= player.inventory.length) {
+            console.warn(`Invalid drop slot index: ${slotIndex}`);
+            return;
+        }
 
         const item = player.inventory[slotIndex];
-        if (!item || item.itemId === ItemType.EMPTY || item.count <= 0) return;
+        if (!item || item.itemId === ItemType.EMPTY || item.count <= 0) {
+            console.warn(`Cannot drop empty slot ${slotIndex}: itemId=${item?.itemId}, count=${item?.count}`);
+            return;
+        }
 
-        // Drop the item at player's position with slight offset
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 30;
-        const dropX = player.x + Math.cos(angle) * distance;
-        const dropY = player.y + Math.sin(angle) * distance;
+        // Save item info before modifying
+        const itemType = item.itemId as ItemType;
+        const dropCount = dropAll ? item.count : 1;
 
-        this.spawnDroppedItem(item.itemId as ItemType, item.count, dropX, dropY);
+        // Calculate drop direction
+        let dropAngle = 0;
+        const dropDistance = 80; // Distance to avoid immediate pickup
 
-        // Clear the inventory slot
-        const emptyItem = new InventoryItem();
-        emptyItem.itemId = ItemType.EMPTY;
-        emptyItem.count = 0;
-        player.inventory[slotIndex] = emptyItem;
+        if (mouseX !== undefined && mouseY !== undefined) {
+            // Use mouse position to calculate direction (like shooting)
+            dropAngle = Math.atan2(mouseY - player.y, mouseX - player.x);
+        } else {
+            // Fallback: use player's movement direction
+            const agent = this.agents.get(sessionId);
+            if (agent && agent.body) {
+                const velocity = agent.body.velocity;
+                const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
 
-        console.log(`Player dropped ${item.count}x ${item.itemId} at (${dropX}, ${dropY})`);
+                if (speed > 0.5) {
+                    // Player is moving, drop in movement direction
+                    dropAngle = Math.atan2(velocity.y, velocity.x);
+                } else {
+                    // Player is stationary, drop downward
+                    dropAngle = Math.PI / 2;
+                }
+            } else {
+                // Fallback: drop downward
+                dropAngle = Math.PI / 2;
+            }
+        }
+
+        // Calculate drop position
+        const dropX = player.x + Math.cos(dropAngle) * dropDistance;
+        const dropY = player.y + Math.sin(dropAngle) * dropDistance;
+
+        console.log(`Player dropping ${dropCount}x ${itemType} from slot ${slotIndex} towards mouse (${mouseX}, ${mouseY}), angle: ${dropAngle.toFixed(2)}`);
+        this.spawnDroppedItem(itemType, dropCount, dropX, dropY);
+
+        // Deduct from inventory
+        item.count -= dropCount;
+        if (item.count <= 0) {
+            // Clear the inventory slot
+            item.itemId = ItemType.EMPTY;
+            item.count = 0;
+        }
     }
 
     /**

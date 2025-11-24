@@ -23,7 +23,7 @@ export class PlayerControlBehavior extends Behavior<Player> {
             // 2. Handle Drop Item (Q key)
             if (input.dropItem && this.onDropItem) {
                 const sessionId = (this.agent as any).sessionId;
-                this.onDropItem(sessionId, player.selectedSlot);
+                this.onDropItem(sessionId, player.selectedSlot, input.mouseX, input.mouseY);
             }
 
             // 3. Handle Item Usage (Shoot or Place)
@@ -78,5 +78,5 @@ export class PlayerControlBehavior extends Behavior<Player> {
 
     onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) => void;
     onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockItem) => void;
-    onDropItem: (playerId: string, slotIndex: number) => void;
+    onDropItem: (playerId: string, slotIndex: number, mouseX: number, mouseY: number) => void;
 }
