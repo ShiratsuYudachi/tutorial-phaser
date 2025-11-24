@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Icon } from "@iconify/react";
 import { gameStore, useCurrentPlayer } from "./GameStore";
-import { ITEM_DEFINITIONS, INVENTORY_SIZE, SpecialItemType } from "../../../server/src/shared/Constants";
+import { ITEM_DEFINITIONS, INVENTORY_SIZE, ItemType } from "../../../server/src/shared/Constants";
 
 export const Inventory: React.FC = () => {
     const player = useCurrentPlayer();
@@ -20,7 +20,7 @@ export const Inventory: React.FC = () => {
     const handleDragStart = (e: React.DragEvent, index: number) => {
         const item = inventory[index];
         // Only allow dragging if there's a real item (not empty)
-        if (!item || !item.itemId || item.itemId === SpecialItemType.EMPTY) {
+        if (!item || !item.itemId || item.itemId === ItemType.EMPTY) {
             e.preventDefault();
             return;
         }
@@ -76,7 +76,7 @@ export const Inventory: React.FC = () => {
             {Array.from({ length: INVENTORY_SIZE }).map((_, index) => {
                 const item = inventory[index];
                 // Check if item is empty or not present
-                const isEmpty = !item || !item.itemId || item.itemId === SpecialItemType.EMPTY;
+                const isEmpty = !item || !item.itemId || item.itemId === ItemType.EMPTY;
                 const def = !isEmpty ? ITEM_DEFINITIONS[item.itemId] : null;
                 const isSelected = selectedSlot === index;
 

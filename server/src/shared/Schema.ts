@@ -1,6 +1,6 @@
 
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
-import { WeaponType, BlockType, EntityType, TeamType } from "./Constants";
+import { ItemType, EntityType, TeamType } from "./Constants";
 
 export interface InputData {
     left: boolean;
@@ -17,7 +17,7 @@ export interface InputData {
 }
 
 export class InventoryItem extends Schema {
-    @type("string") itemId: string; // WeaponType or BlockType
+    @type("string") itemId: string; // ItemId
     @type("number") count: number;  // Amount
 }
 
@@ -51,11 +51,11 @@ export class Bullet extends Entity {
     @type("number") velocityY: number;
     @type("string") ownerId: string;
     @type("number") damage: number; // Damage
-    @type("string") weaponType: string = WeaponType.BOW; // WeaponType
+    @type("string") weaponType: string = ItemType.BOW; // ItemId (weapon)
 }
 
 export class Block extends HealthEntity {
-    @type("string") blockType: string = BlockType.WOOD; // BlockType
+    @type("string") blockType: string = ItemType.WOOD; // ItemId (block)
     // No teamId - blocks are neutral
 }
 

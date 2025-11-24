@@ -4,7 +4,7 @@ import { BACKEND_URL } from "../backend";
 
 import type { GameState } from "../../../server/src/shared/Schema";
 import { Player, Bullet, Block, Bed, Entity } from "../../../server/src/shared/Schema";
-import { GAME_CONFIG, WALLS, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, ITEM_DEFINITIONS, SpecialItemType } from "../../../server/src/shared/Constants";
+import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, isWeapon, isBlock } from "../../../server/src/shared/Constants";
 import { InputData } from "../../../server/src/shared/Schema";
 
 import { gameStore } from "../ui/GameStore";
@@ -192,11 +192,11 @@ export class GameScene extends Phaser.Scene {
         }
     }
     
-    playWeaponSound(weaponType: WeaponType) {
+    playWeaponSound(weaponType: ItemType) {
         switch(weaponType) {
-            case WeaponType.BOW: if (this.bowShootSound) this.bowShootSound.play(); break;
-            case WeaponType.FIREBALL: if (this.fireballShootSound) this.fireballShootSound.play(); break;
-            case WeaponType.DART: if (this.dartShootSound) this.dartShootSound.play(); break;
+            case ItemType.BOW: if (this.bowShootSound) this.bowShootSound.play(); break;
+            case ItemType.FIREBALL: if (this.fireballShootSound) this.fireballShootSound.play(); break;
+            case ItemType.DART: if (this.dartShootSound) this.dartShootSound.play(); break;
         }
     }
 
@@ -230,7 +230,7 @@ export class GameScene extends Phaser.Scene {
                     
                     const bullet = entity as Bullet;
                     if (bullet.ownerId === this.currentPlayerId) {
-                        this.playWeaponSound(bullet.weaponType as WeaponType);
+                        this.playWeaponSound(bullet.weaponType as ItemType);
                     }
                 } else if (entity instanceof Block || entity.type === 'block') {
                     visual = this.createBlock(entity as Block);
@@ -381,15 +381,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     createBullet(bullet: Bullet) {
-        const weaponType = bullet.weaponType as WeaponType;
-        const color = WEAPON_CONFIG[weaponType]?.color || 0xffff00;
+        const weaponType = bullet.weaponType as ItemType;
+        const color = WEAPON_CONFIG[weaponType as keyof typeof WEAPON_CONFIG]?.color || 0xffff00;
         return this.add.circle(bullet.x, bullet.y, GAME_CONFIG.bulletRadius, color);
     }
 
     createBlock(block: Block) {
         const container = this.add.container(block.x, block.y);
-        const blockType = block.blockType as BlockType;
-        const color = BLOCK_CONFIG[blockType]?.color || 0x884400;
+        const blockType = block.blockType as ItemType;
+        const color = BLOCK_CONFIG[blockType as keyof typeof BLOCK_CONFIG]?.color || 0x884400;
         
         const blockRect = this.add.rectangle(0, 0, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, color);
         container.add(blockRect);
@@ -467,10 +467,10 @@ export class GameScene extends Phaser.Scene {
             const selectedSlotIndex = player.selectedSlot;
             const selectedItem = player.inventory[selectedSlotIndex];
             // Check if item is valid and not empty
-            const isValidItem = selectedItem && selectedItem.itemId && selectedItem.itemId !== SpecialItemType.EMPTY;
+            const isValidItem = selectedItem && selectedItem.itemId && selectedItem.itemId !== ItemType.EMPTY;
             const itemDef = isValidItem ? ITEM_DEFINITIONS[selectedItem.itemId] : null;
             
-            if (itemDef && itemDef.type === 'block') {
+            if (isValidItem && isBlock(selectedItem.itemId as ItemType)) {
                  // Block Preview Logic
                  this.gridGraphics.setVisible(true);
                  this.drawGrid();

@@ -1,7 +1,7 @@
 import { Behavior } from "./Behavior";
 import { Player, InputData } from "../shared/Schema";
 import { applyInput } from "../shared/GameLogic";
-import { WEAPON_CONFIG, ITEM_DEFINITIONS, BlockType, WeaponType } from "../shared/Constants";
+import { WEAPON_CONFIG, ITEM_DEFINITIONS, ItemType, isWeapon, isBlock } from "../shared/Constants";
 
 export class PlayerControlBehavior extends Behavior<Player> {
     update(deltaTime: number) {
@@ -26,12 +26,12 @@ export class PlayerControlBehavior extends Behavior<Player> {
                 // Check what's in the current slot
                 const slotItem = player.inventory.at(player.selectedSlot);
                 if (slotItem && slotItem.itemId && slotItem.count > 0) {
-                    const itemDef = ITEM_DEFINITIONS[slotItem.itemId];
+                    const itemId = slotItem.itemId as ItemType;
                     
-                    if (itemDef.type === 'weapon') {
+                    if (isWeapon(itemId)) {
                         // --- WEAPON LOGIC ---
                         const now = Date.now();
-                        const weaponConfig = WEAPON_CONFIG[slotItem.itemId as WeaponType];
+                        const weaponConfig = WEAPON_CONFIG[itemId as keyof typeof WEAPON_CONFIG];
                         const fireRate = weaponConfig ? weaponConfig.fireRate : 500;
 
                         if (now - player.lastShootTime > fireRate) {
@@ -41,10 +41,10 @@ export class PlayerControlBehavior extends Behavior<Player> {
                                 input.mouseX - this.agent.body.position.x
                             );
                             
-                            this.spawnBullet(player, this.agent.body.position, aimAngle, slotItem.itemId as WeaponType);
+                            this.spawnBullet(player, this.agent.body.position, aimAngle, itemId);
                             player.lastShootTime = now;
                         }
-                    } else if (itemDef.type === 'block') {
+                    } else if (isBlock(itemId)) {
                         // --- BLOCK LOGIC ---
                         if (this.onPlaceBlock) {
                             const sessionId = (this.agent as any).sessionId;
@@ -52,7 +52,7 @@ export class PlayerControlBehavior extends Behavior<Player> {
                                 sessionId, 
                                 input.mouseX, 
                                 input.mouseY, 
-                                slotItem.itemId as BlockType
+                                itemId
                             );
                         }
                     }
@@ -61,13 +61,13 @@ export class PlayerControlBehavior extends Behavior<Player> {
         }
     }
 
-    spawnBullet(player: Player, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponType) {
+    spawnBullet(player: Player, position: { x: number, y: number }, aimAngle: number, weaponType: ItemType) {
         if (this.onShoot) {
             const sessionId = (this.agent as any).sessionId;
             this.onShoot(sessionId, position, aimAngle, weaponType);
         }
     }
 
-    onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponType) => void;
-    onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockType) => void;
+    onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: ItemType) => void;
+    onPlaceBlock: (playerId: string, x: number, y: number, blockType: ItemType) => void;
 }

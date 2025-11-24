@@ -1,24 +1,56 @@
 
-// 特殊物品类型
-export enum SpecialItemType {
-    EMPTY = 'empty'     // 空格子占位符
+// 统一物品ID枚举
+export enum ItemType {
+    // 特殊物品
+    EMPTY = 'empty',
+    
+    // 武器
+    BOW = 'bow',
+    FIREBALL = 'fireball',
+    DART = 'dart',
+    
+    // 方块
+    WOOD = 'wood',
+    STONE = 'stone',
+    DIAMOND = 'diamond'
 }
 
-// 武器类型枚举
-export enum WeaponType {
-    BOW = 'bow',        // 弓箭 - 中等射程、中等伤害
-    FIREBALL = 'fireball', // 火球 - 长射程、高伤害
-    DART = 'dart'       // 飞镖 - 短射程、低伤害、高攻速
-}
+// 武器集合
+export const WEAPONS = new Set<ItemType>([
+    ItemType.BOW,
+    ItemType.FIREBALL,
+    ItemType.DART
+]);
 
-// 方块类型枚举
-export enum BlockType {
-    WOOD = 'wood',      // 木制方块 - HP 50
-    STONE = 'stone',    // 石制方块 - HP 100
-    DIAMOND = 'diamond' // 钻石方块 - HP 200
-}
+// 方块集合
+export const BLOCKS = new Set<ItemType>([
+    ItemType.WOOD,
+    ItemType.STONE,
+    ItemType.DIAMOND
+]);
 
-export type ItemType = WeaponType | BlockType | SpecialItemType;
+// 辅助函数
+export const isWeapon = (itemId: ItemType): boolean => WEAPONS.has(itemId);
+export const isBlock = (itemId: ItemType): boolean => BLOCKS.has(itemId);
+export const isEmpty = (itemId: ItemType): boolean => itemId === ItemType.EMPTY;
+
+// 向后兼容的类型别名（可以逐步移除）
+export const WeaponType = {
+    BOW: ItemType.BOW,
+    FIREBALL: ItemType.FIREBALL,
+    DART: ItemType.DART
+} as const;
+
+export const BlockType = {
+    WOOD: ItemType.WOOD,
+    STONE: ItemType.STONE,
+    DIAMOND: ItemType.DIAMOND
+} as const;
+
+export const SpecialItemType = {
+    EMPTY: ItemType.EMPTY
+} as const;
+
 
 // 实体类型枚举
 export enum EntityType {
@@ -37,59 +69,59 @@ export enum TeamType {
 export const INVENTORY_SIZE = 9;
 
 // 统一物品定义
-export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block' | 'special', maxStack: number, name: string, color: number, icon: string }> = {
-    [SpecialItemType.EMPTY]: { type: 'special', maxStack: 0, name: 'Empty', color: 0x000000, icon: '' },
-    [WeaponType.BOW]: { type: 'weapon', maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow' },
-    [WeaponType.FIREBALL]: { type: 'weapon', maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball' },
-    [WeaponType.DART]: { type: 'weapon', maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers' },
-    [BlockType.WOOD]: { type: 'block', maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'game-icons:wood-pile' },
-    [BlockType.STONE]: { type: 'block', maxStack: 64, name: 'Stone', color: 0x808080, icon: 'game-icons:stone-block' },
-    [BlockType.DIAMOND]: { type: 'block', maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:diamond' }
+export const ITEM_DEFINITIONS: Record<ItemType, { maxStack: number, name: string, color: number, icon: string }> = {
+    [ItemType.EMPTY]: { maxStack: 0, name: 'Empty', color: 0x000000, icon: '' },
+    [ItemType.BOW]: { maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow' },
+    [ItemType.FIREBALL]: { maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball' },
+    [ItemType.DART]: { maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers' },
+    [ItemType.WOOD]: { maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'game-icons:wood-pile' },
+    [ItemType.STONE]: { maxStack: 64, name: 'Stone', color: 0x808080, icon: 'game-icons:stone-block' },
+    [ItemType.DIAMOND]: { maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:diamond' }
 };
 
 // 武器配置
-export const WEAPON_CONFIG = {
-    [WeaponType.BOW]: {
+export const WEAPON_CONFIG: Record<ItemType, { damage: number, fireRate: number, bulletSpeed: number, color: number, name: string }> = {
+    [ItemType.BOW]: {
         damage: 20,
         fireRate: 500,  // ms
         bulletSpeed: 10,
         color: 0xffff00, // 黄色
         name: '弓箭'
     },
-    [WeaponType.FIREBALL]: {
+    [ItemType.FIREBALL]: {
         damage: 35,
         fireRate: 1000,  // ms (更慢)
         bulletSpeed: 8,
         color: 0xff4500, // 橙红色
         name: '火球'
     },
-    [WeaponType.DART]: {
+    [ItemType.DART]: {
         damage: 10,
         fireRate: 200,   // ms (更快)
         bulletSpeed: 12,
         color: 0x00ffff, // 青色
         name: '飞镖'
     }
-};
+} as any; // Type assertion to allow partial record
 
 // 方块配置
-export const BLOCK_CONFIG = {
-    [BlockType.WOOD]: {
+export const BLOCK_CONFIG: Record<ItemType, { maxHP: number, color: number, name: string }> = {
+    [ItemType.WOOD]: {
         maxHP: 50,
         color: 0x8B4513, // 棕色
         name: '木制方块'
     },
-    [BlockType.STONE]: {
+    [ItemType.STONE]: {
         maxHP: 100,
         color: 0x808080, // 灰色
         name: '石制方块'
     },
-    [BlockType.DIAMOND]: {
+    [ItemType.DIAMOND]: {
         maxHP: 200,
         color: 0x00CED1, // 钻石蓝
         name: '钻石方块'
     }
-};
+} as any; // Type assertion to allow partial record
 
 export const GAME_CONFIG = {
     mapWidth: 800,
@@ -120,9 +152,9 @@ export const GAME_CONFIG = {
     gridSize: 40,           // 网格大小
     maxPlaceRange: 150,     // 最大放置距离
     initialBlocks: {        // 初始方块数量
-        [BlockType.WOOD]: 20,
-        [BlockType.STONE]: 10,
-        [BlockType.DIAMOND]: 5
+        [ItemType.WOOD]: 20,
+        [ItemType.STONE]: 10,
+        [ItemType.DIAMOND]: 5
     }
 };
 

@@ -1,8 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, EntityType, TeamType } from "../shared/Constants";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, EntityType, TeamType, SpecialItemType } from "../shared/Constants";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, isWeapon, isBlock } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -293,12 +292,12 @@ export class GameRoom extends Room<GameState> {
         });
     }
 
-    spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponType) {
+    spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: ItemType) {
         const player = this.state.entities.get(ownerId) as Player;
         if (!player) return;
         
         // 获取当前武器配置
-        const weaponConfig = WEAPON_CONFIG[weaponType] || WEAPON_CONFIG[WeaponType.BOW];
+        const weaponConfig = WEAPON_CONFIG[weaponType as keyof typeof WEAPON_CONFIG] || WEAPON_CONFIG[ItemType.BOW];
         
         const bulletId = Math.random().toString(36).substr(2, 9);
         const bullet = new Bullet();
@@ -342,7 +341,7 @@ export class GameRoom extends Room<GameState> {
         this.state.entities.delete(bulletId);
     }
     
-    placeBlock(playerId: string, x: number, y: number, blockType: BlockType) {
+    placeBlock(playerId: string, x: number, y: number, blockType: ItemType) {
         const player = this.state.entities.get(playerId) as Player;
         if (!player) return;
         
@@ -391,7 +390,7 @@ export class GameRoom extends Room<GameState> {
         block.blockType = blockType;
         // Removed teamId assignment
         
-        const blockConfig = BLOCK_CONFIG[blockType];
+        const blockConfig = BLOCK_CONFIG[blockType as keyof typeof BLOCK_CONFIG];
         block.hp = blockConfig.maxHP;
         block.maxHP = blockConfig.maxHP;
         
@@ -491,16 +490,16 @@ export class GameRoom extends Room<GameState> {
 
         
         // Fill initial inventory items
-        player.inventory.push(createItem(WeaponType.BOW, 1));
-        player.inventory.push(createItem(WeaponType.FIREBALL, 1));
-        player.inventory.push(createItem(WeaponType.DART, 1));
-        player.inventory.push(createItem(BlockType.WOOD, GAME_CONFIG.initialBlocks[BlockType.WOOD]));
-        player.inventory.push(createItem(BlockType.STONE, GAME_CONFIG.initialBlocks[BlockType.STONE]));
-        player.inventory.push(createItem(BlockType.DIAMOND, GAME_CONFIG.initialBlocks[BlockType.DIAMOND]));
+        player.inventory.push(createItem(ItemType.BOW, 1));
+        player.inventory.push(createItem(ItemType.FIREBALL, 1));
+        player.inventory.push(createItem(ItemType.DART, 1));
+        player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
+        player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
+        player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
 
         // Fill remaining slots with empty items
         while (player.inventory.length < INVENTORY_SIZE) {
-            player.inventory.push(createItem(SpecialItemType.EMPTY, 0));
+            player.inventory.push(createItem(ItemType.EMPTY, 0));
         }
         
         player.selectedSlot = 0;
