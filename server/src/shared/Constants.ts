@@ -13,9 +13,21 @@ export enum BlockType {
     DIAMOND = 'diamond' // 钻石方块 - HP 200
 }
 
+// 实体类型枚举
+export enum EntityType {
+    PLAYER = 'player',
+    BULLET = 'bullet',
+    BLOCK = 'block',
+    BED = 'bed'
+}
+
+// 队伍类型枚举
+export enum TeamType {
+    RED = 'red',
+    BLUE = 'blue'
+}
 
 export const INVENTORY_SIZE = 9;
-
 
 // 统一物品定义
 export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block', maxStack: number, name: string, color: number }> = {

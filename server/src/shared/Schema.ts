@@ -1,5 +1,6 @@
 
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
+import { WeaponType, BlockType, EntityType, TeamType } from "./Constants";
 
 export interface InputData {
     left: boolean;
@@ -21,7 +22,7 @@ export class InventoryItem extends Schema {
 }
 
 export class Entity extends Schema {
-    @type("string") type: string;
+    @type("string") type: string; // EntityType
     @type("number") x: number;
     @type("number") y: number;
 }
@@ -34,7 +35,7 @@ export class HealthEntity extends Entity {
 export class Player extends HealthEntity {
     @type("number") tick: number;
     @type("number") lastShootTime: number = 0;
-    @type("string") teamId: string; // "red" or "blue"
+    @type("string") teamId: string; // TeamType
     @type("boolean") isDead: boolean = false;
     @type("number") respawnTime: number = 0; // Respawn cooldown
     
@@ -50,16 +51,16 @@ export class Bullet extends Entity {
     @type("number") velocityY: number;
     @type("string") ownerId: string;
     @type("number") damage: number; // Damage
-    @type("string") weaponType: string = 'bow'; // Weapon type
+    @type("string") weaponType: string = WeaponType.BOW; // WeaponType
 }
 
 export class Block extends HealthEntity {
-    @type("string") blockType: string = 'wood'; // Block type
-    @type("string") teamId: string; // Team ID
+    @type("string") blockType: string = BlockType.WOOD; // BlockType
+    // No teamId - blocks are neutral
 }
 
 export class Bed extends HealthEntity {
-    @type("string") teamId: string;
+    @type("string") teamId: string; // TeamType
 }
 
 export class GameState extends Schema {

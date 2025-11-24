@@ -433,14 +433,13 @@ export class GameScene extends Phaser.Scene {
         const healthBarFg = container.getData('healthBarFg');
         const blockRect = container.getData('blockRect');
         const maxHP = container.getData('maxHP');
-        const teamId = container.getData('teamId');
         
         if (healthBarFg && maxHP) {
             const hpPercent = Math.max(0, block.hp / maxHP);
             healthBarFg.scaleX = hpPercent;
             
-            const healthBarColor = teamId === 'red' ? 0xff0000 : 0x0000ff;
-            healthBarFg.setFillStyle(healthBarColor);
+            // Keep neutral gray color
+            healthBarFg.setFillStyle(0x888888);
             
             if (blockRect) {
                 const alpha = 0.3 + (hpPercent * 0.7);
@@ -463,7 +462,8 @@ export class GameScene extends Phaser.Scene {
         const blockRect = this.add.rectangle(0, 0, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, color);
         container.add(blockRect);
         
-        const healthBarColor = block.teamId === 'red' ? 0xff0000 : 0x0000ff;
+        // Neutral blocks - use gray health bar
+        const healthBarColor = 0x888888;
         
         const healthBarBg = this.add.rectangle(0, -25, GAME_CONFIG.blockSize, 4, 0x000000);
         const healthBarFg = this.add.rectangle(0, -25, GAME_CONFIG.blockSize, 4, healthBarColor);
@@ -475,7 +475,6 @@ export class GameScene extends Phaser.Scene {
         container.setData('healthBarFg', healthBarFg);
         container.setData('blockRect', blockRect);
         container.setData('maxHP', block.maxHP);
-        container.setData('teamId', block.teamId);
         
         return container;
     }

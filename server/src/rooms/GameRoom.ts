@@ -1,7 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE } from "../shared/Constants";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, EntityType, TeamType } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -44,8 +44,8 @@ export class GameRoom extends Room<GameState> {
         });
         
         // 3. Create Beds
-        this.createBed('red', GAME_CONFIG.redBedPos.x, GAME_CONFIG.redBedPos.y);
-        this.createBed('blue', GAME_CONFIG.blueBedPos.x, GAME_CONFIG.blueBedPos.y);
+        this.createBed(TeamType.RED, GAME_CONFIG.redBedPos.x, GAME_CONFIG.redBedPos.y);
+        this.createBed(TeamType.BLUE, GAME_CONFIG.blueBedPos.x, GAME_CONFIG.blueBedPos.y);
 
         // 4. Collision Events
         Matter.Events.on(this.engine, 'collisionStart', (event) => {
@@ -73,7 +73,7 @@ export class GameRoom extends Room<GameState> {
     createBed(teamId: string, x: number, y: number) {
         const bedId = `bed_${teamId}`;
         const bed = new Bed();
-        bed.type = 'bed';
+        bed.type = EntityType.BED;
         bed.teamId = teamId;
         bed.x = x;
         bed.y = y;
@@ -165,16 +165,11 @@ export class GameRoom extends Room<GameState> {
                 const block = this.state.entities.get(blockId) as Block;
                 
                 if (block && block.hp > 0) {
-                    // 不能打自己队伍的方块
-                    const shooter = this.state.entities.get(bullet.ownerId) as Player;
-                    if (shooter && shooter.teamId === block.teamId) {
-                        console.log(`Cannot attack own team's block`);
-                        return; // 不移除子弹，让它穿过
-                    }
+                    // Removed friendly fire check as requested: anyone can destroy blocks
                     
                     // 扣血
                     block.hp -= bullet.damage;
-                    console.log(`Block ${blockId} (${block.teamId}) hit by ${bullet.ownerId}, HP: ${block.hp}/${block.maxHP}`);
+                    console.log(`Block ${blockId} hit by ${bullet.ownerId}, HP: ${block.hp}/${block.maxHP}`);
                     
                     // 方块被破坏
                     if (block.hp <= 0) {
@@ -268,7 +263,7 @@ export class GameRoom extends Room<GameState> {
         
         const bulletId = Math.random().toString(36).substr(2, 9);
         const bullet = new Bullet();
-        bullet.type = 'bullet';
+        bullet.type = EntityType.BULLET;
         bullet.x = position.x;
         bullet.y = position.y;
         bullet.ownerId = ownerId;
@@ -351,11 +346,11 @@ export class GameRoom extends Room<GameState> {
         // 创建方块
         const blockId = Math.random().toString(36).substr(2, 9);
         const block = new Block();
-        block.type = 'block';
+        block.type = EntityType.BLOCK;
         block.x = gridX;
         block.y = gridY;
         block.blockType = blockType;
-        block.teamId = player.teamId; // 设置方块的队伍ID
+        // Removed teamId assignment
         
         const blockConfig = BLOCK_CONFIG[blockType];
         block.hp = blockConfig.maxHP;
@@ -378,12 +373,6 @@ export class GameRoom extends Room<GameState> {
         
         // 消耗方块
         item.count = count - 1;
-        if (item.count <= 0) {
-            // Usually in MC you keep the empty slot or remove it.
-            // Let's keep it empty or just 0 count.
-            // item.itemId = null? No, schema is strict. 
-            // Just keeping count 0 is fine for now.
-        }
         
         console.log(`Placed ${blockType} block at ${gridX}, ${gridY}. Remaining: ${item.count}`);
     }
@@ -423,7 +412,7 @@ export class GameRoom extends Room<GameState> {
         const agent = this.agents.get(sessionId);
         if (agent && agent.body) {
             // 根据队伍重生在对应位置
-            const spawnPos = player.teamId === 'red' ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
+            const spawnPos = player.teamId === TeamType.RED ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
             Matter.Body.setPosition(agent.body, { x: spawnPos.x, y: spawnPos.y });
             Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
         }
@@ -435,11 +424,11 @@ export class GameRoom extends Room<GameState> {
         console.log(client.sessionId, "joined!");
         
         // 分配队伍：第一个玩家=红队，第二个玩家=蓝队
-        const teamId = this.teamAssignments.length === 0 ? 'red' : 'blue';
+        const teamId = this.teamAssignments.length === 0 ? TeamType.RED : TeamType.BLUE;
         this.teamAssignments.push(client.sessionId);
         
         const player = new Player();
-        player.type = 'player';
+        player.type = EntityType.PLAYER;
         player.teamId = teamId;
         player.hp = GAME_CONFIG.playerMaxHP;
         player.maxHP = GAME_CONFIG.playerMaxHP;
@@ -469,13 +458,12 @@ export class GameRoom extends Room<GameState> {
         player.inventory.push(createItem(BlockType.STONE, GAME_CONFIG.initialBlocks[BlockType.STONE]));
         player.inventory.push(createItem(BlockType.DIAMOND, GAME_CONFIG.initialBlocks[BlockType.DIAMOND]));
 
-        // Fill remaining with empty slots if needed, or just leave them null
-        // For now we just push valid items. Clients should render empty slots if array length < INVENTORY_SIZE
+        // Fill remaining with empty slots if needed
         
         player.selectedSlot = 0;
 
         // 根据队伍设置出生点
-        const spawnPos = teamId === 'red' ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
+        const spawnPos = teamId === TeamType.RED ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
         player.x = spawnPos.x;
         player.y = spawnPos.y;
         
