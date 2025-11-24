@@ -1,7 +1,7 @@
 import { Behavior } from "./Behavior";
 import { Player, InputData } from "../shared/Schema";
 import { applyInput } from "../shared/GameLogic";
-import { WEAPON_CONFIG, ITEM_DEFINITIONS, ItemType, isWeapon, isBlock } from "../shared/Constants";
+import { WEAPON_CONFIG, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock } from "../shared/Constants";
 
 export class PlayerControlBehavior extends Behavior<Player> {
     update(deltaTime: number) {
@@ -30,8 +30,9 @@ export class PlayerControlBehavior extends Behavior<Player> {
                     
                     if (isWeapon(itemId)) {
                         // --- WEAPON LOGIC ---
+                        // itemId is now narrowed to WeaponId by type guard
                         const now = Date.now();
-                        const weaponConfig = WEAPON_CONFIG[itemId as keyof typeof WEAPON_CONFIG];
+                        const weaponConfig = WEAPON_CONFIG[itemId];
                         const fireRate = weaponConfig ? weaponConfig.fireRate : 500;
 
                         if (now - player.lastShootTime > fireRate) {
@@ -46,6 +47,7 @@ export class PlayerControlBehavior extends Behavior<Player> {
                         }
                     } else if (isBlock(itemId)) {
                         // --- BLOCK LOGIC ---
+                        // itemId is now narrowed to BlockId by type guard
                         if (this.onPlaceBlock) {
                             const sessionId = (this.agent as any).sessionId;
                             this.onPlaceBlock(
@@ -61,13 +63,13 @@ export class PlayerControlBehavior extends Behavior<Player> {
         }
     }
 
-    spawnBullet(player: Player, position: { x: number, y: number }, aimAngle: number, weaponType: ItemType) {
+    spawnBullet(player: Player, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) {
         if (this.onShoot) {
             const sessionId = (this.agent as any).sessionId;
             this.onShoot(sessionId, position, aimAngle, weaponType);
         }
     }
 
-    onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: ItemType) => void;
-    onPlaceBlock: (playerId: string, x: number, y: number, blockType: ItemType) => void;
+    onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) => void;
+    onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockItem) => void;
 }

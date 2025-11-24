@@ -3,7 +3,7 @@ import { Player } from "../shared/Schema";
 import { PlayerControlBehavior } from "../behaviors/PlayerControlBehavior";
 import { SyncTransformBehavior } from "../behaviors/SyncTransformBehavior";
 import Matter from "matter-js";
-import { GAME_CONFIG, COLLISION_CATEGORIES, ItemType } from "../shared/Constants";
+import { GAME_CONFIG, COLLISION_CATEGORIES, WeaponItem, BlockItem } from "../shared/Constants";
 
 export class PlayerAgent extends Agent<Player> {
     sessionId: string;
@@ -12,8 +12,8 @@ export class PlayerAgent extends Agent<Player> {
         sessionId: string, 
         world: Matter.World, 
         schema: Player, 
-        onShoot: (ownerId: string, pos: { x: number, y: number }, aimAngle: number, weaponType: ItemType) => void,
-        onPlaceBlock: (playerId: string, x: number, y: number, blockType: ItemType) => void
+        onShoot: (ownerId: string, pos: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) => void,
+        onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockItem) => void
     ) {
         super(world, schema);
         this.sessionId = sessionId;

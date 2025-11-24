@@ -4,7 +4,7 @@ import { BACKEND_URL } from "../backend";
 
 import type { GameState } from "../../../server/src/shared/Schema";
 import { Player, Bullet, Block, Bed, Entity } from "../../../server/src/shared/Schema";
-import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, isWeapon, isBlock } from "../../../server/src/shared/Constants";
+import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock } from "../../../server/src/shared/Constants";
 import { InputData } from "../../../server/src/shared/Schema";
 
 import { gameStore } from "../ui/GameStore";
@@ -192,7 +192,7 @@ export class GameScene extends Phaser.Scene {
         }
     }
     
-    playWeaponSound(weaponType: ItemType) {
+    playWeaponSound(weaponType: WeaponItem) {
         switch(weaponType) {
             case ItemType.BOW: if (this.bowShootSound) this.bowShootSound.play(); break;
             case ItemType.FIREBALL: if (this.fireballShootSound) this.fireballShootSound.play(); break;
@@ -230,7 +230,7 @@ export class GameScene extends Phaser.Scene {
                     
                     const bullet = entity as Bullet;
                     if (bullet.ownerId === this.currentPlayerId) {
-                        this.playWeaponSound(bullet.weaponType as ItemType);
+                        this.playWeaponSound(bullet.weaponType as WeaponItem);
                     }
                 } else if (entity instanceof Block || entity.type === 'block') {
                     visual = this.createBlock(entity as Block);
@@ -381,15 +381,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     createBullet(bullet: Bullet) {
-        const weaponType = bullet.weaponType as ItemType;
-        const color = WEAPON_CONFIG[weaponType as keyof typeof WEAPON_CONFIG]?.color || 0xffff00;
+        const weaponType = bullet.weaponType as WeaponItem;
+        const color = WEAPON_CONFIG[weaponType]?.color || 0xffff00;
         return this.add.circle(bullet.x, bullet.y, GAME_CONFIG.bulletRadius, color);
     }
 
     createBlock(block: Block) {
         const container = this.add.container(block.x, block.y);
-        const blockType = block.blockType as ItemType;
-        const color = BLOCK_CONFIG[blockType as keyof typeof BLOCK_CONFIG]?.color || 0x884400;
+        const blockType = block.blockType as BlockItem;
+        const color = BLOCK_CONFIG[blockType]?.color || 0x884400;
         
         const blockRect = this.add.rectangle(0, 0, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, color);
         container.add(blockRect);

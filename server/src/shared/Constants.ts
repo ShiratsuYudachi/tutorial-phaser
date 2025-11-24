@@ -15,24 +15,29 @@ export enum ItemType {
     DIAMOND = 'diamond'
 }
 
+// 精确的类型别名
+export type WeaponItem = ItemType.BOW | ItemType.FIREBALL | ItemType.DART;
+export type BlockItem = ItemType.WOOD | ItemType.STONE | ItemType.DIAMOND;
+export type EmptyItem = ItemType.EMPTY;
+
 // 武器集合
-export const WEAPONS = new Set<ItemType>([
+export const WEAPONS = new Set<WeaponItem>([
     ItemType.BOW,
     ItemType.FIREBALL,
     ItemType.DART
 ]);
 
 // 方块集合
-export const BLOCKS = new Set<ItemType>([
+export const BLOCKS = new Set<BlockItem>([
     ItemType.WOOD,
     ItemType.STONE,
     ItemType.DIAMOND
 ]);
 
-// 辅助函数
-export const isWeapon = (itemId: ItemType): boolean => WEAPONS.has(itemId);
-export const isBlock = (itemId: ItemType): boolean => BLOCKS.has(itemId);
-export const isEmpty = (itemId: ItemType): boolean => itemId === ItemType.EMPTY;
+// 辅助函数（带类型守卫）
+export const isWeapon = (itemId: ItemType): itemId is WeaponItem => WEAPONS.has(itemId as WeaponItem);
+export const isBlock = (itemId: ItemType): itemId is BlockItem => BLOCKS.has(itemId as BlockItem);
+export const isEmpty = (itemId: ItemType): itemId is EmptyItem => itemId === ItemType.EMPTY;
 
 // 向后兼容的类型别名（可以逐步移除）
 export const WeaponType = {

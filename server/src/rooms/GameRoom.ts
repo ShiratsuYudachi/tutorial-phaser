@@ -1,7 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, isWeapon, isBlock } from "../shared/Constants";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -292,12 +292,12 @@ export class GameRoom extends Room<GameState> {
         });
     }
 
-    spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: ItemType) {
+    spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) {
         const player = this.state.entities.get(ownerId) as Player;
         if (!player) return;
         
-        // 获取当前武器配置
-        const weaponConfig = WEAPON_CONFIG[weaponType as keyof typeof WEAPON_CONFIG] || WEAPON_CONFIG[ItemType.BOW];
+        // 获取当前武器配置（现在类型安全，不需要 as keyof）
+        const weaponConfig = WEAPON_CONFIG[weaponType] || WEAPON_CONFIG[ItemType.BOW];
         
         const bulletId = Math.random().toString(36).substr(2, 9);
         const bullet = new Bullet();
@@ -341,7 +341,7 @@ export class GameRoom extends Room<GameState> {
         this.state.entities.delete(bulletId);
     }
     
-    placeBlock(playerId: string, x: number, y: number, blockType: ItemType) {
+    placeBlock(playerId: string, x: number, y: number, blockType: BlockItem) {
         const player = this.state.entities.get(playerId) as Player;
         if (!player) return;
         
@@ -390,7 +390,7 @@ export class GameRoom extends Room<GameState> {
         block.blockType = blockType;
         // Removed teamId assignment
         
-        const blockConfig = BLOCK_CONFIG[blockType as keyof typeof BLOCK_CONFIG];
+        const blockConfig = BLOCK_CONFIG[blockType];
         block.hp = blockConfig.maxHP;
         block.maxHP = blockConfig.maxHP;
         
