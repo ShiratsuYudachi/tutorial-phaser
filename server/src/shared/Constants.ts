@@ -33,12 +33,12 @@ export const INVENTORY_SIZE = 9;
 
 // 统一物品定义
 export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block', maxStack: number, name: string, color: number, icon: string }> = {
-    [WeaponType.BOW]: { type: 'weapon', maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'icons/bow.svg' },
-    [WeaponType.FIREBALL]: { type: 'weapon', maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'icons/fireball.svg' },
-    [WeaponType.DART]: { type: 'weapon', maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'icons/dart.svg' },
-    [BlockType.WOOD]: { type: 'block', maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'icons/wood.svg' },
-    [BlockType.STONE]: { type: 'block', maxStack: 64, name: 'Stone', color: 0x808080, icon: 'icons/stone.svg' },
-    [BlockType.DIAMOND]: { type: 'block', maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'icons/diamond.svg' }
+    [WeaponType.BOW]: { type: 'weapon', maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow' },
+    [WeaponType.FIREBALL]: { type: 'weapon', maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball' },
+    [WeaponType.DART]: { type: 'weapon', maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers' },
+    [BlockType.WOOD]: { type: 'block', maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'game-icons:wood-pile' },
+    [BlockType.STONE]: { type: 'block', maxStack: 64, name: 'Stone', color: 0x808080, icon: 'game-icons:stone-block' },
+    [BlockType.DIAMOND]: { type: 'block', maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:diamond' }
 };
 
 // 武器配置

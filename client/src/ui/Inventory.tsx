@@ -1,14 +1,14 @@
 import React, { useState } from "react";
+import { Icon } from "@iconify/react";
 import { gameStore, useCurrentPlayer } from "./GameStore";
 import { ITEM_DEFINITIONS, INVENTORY_SIZE } from "../../../server/src/shared/Constants";
-import { Player } from "../../../server/src/shared/Schema";
 
 export const Inventory: React.FC = () => {
     const player = useCurrentPlayer();
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-    const inventory = player && player instanceof Player ? [...player.inventory] : [];
-    const selectedSlot = player && player instanceof Player ? player.selectedSlot : 0;
+    const inventory = player && player.inventory ? Array.from(player.inventory) : [];
+    const selectedSlot = player ? player.selectedSlot : 0;
 
     const handleSlotClick = (index: number) => {
         if (gameStore.room) {
@@ -16,7 +16,6 @@ export const Inventory: React.FC = () => {
             // No optimistic update needed, state sync handles it
         }
     };
-    console.log("Player:", player);
 
     const handleDragStart = (e: React.DragEvent, index: number) => {
         setDraggedIndex(index);
@@ -90,14 +89,12 @@ export const Inventory: React.FC = () => {
                         }}
                     >
                         {def ? (
-                            <img 
-                                src={def.icon} 
-                                alt={def.name}
+                            <Icon 
+                                icon={def.icon}
+                                width="40"
+                                height="40"
                                 style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    objectFit: 'contain',
-                                    pointerEvents: 'none' // Ensure drag events pass through image
+                                    pointerEvents: 'none'
                                 }}
                             />
                         ) : null}
