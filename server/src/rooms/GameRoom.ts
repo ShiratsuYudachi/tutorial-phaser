@@ -1,7 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock } from "../shared/Constants";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_TRADES, ITEM_DEFINITIONS } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -96,6 +96,93 @@ export class GameRoom extends Room<GameState> {
                 
                 console.log(`Swap complete`);
             }
+        });
+
+        // Shop Trade
+        this.onMessage("shop_trade", (client, data: { tradeId: string }) => {
+            const player = this.state.entities.get(client.sessionId) as Player;
+            if (!player) {
+                console.warn(`Shop trade: Player ${client.sessionId} not found`);
+                return;
+            }
+
+            // Find the trade configuration
+            const trade = SHOP_TRADES.find(t => t.id === data.tradeId);
+            if (!trade) {
+                console.warn(`Shop trade: Invalid trade ID ${data.tradeId}`);
+                return;
+            }
+
+            console.log(`Player ${client.sessionId} attempting trade: ${trade.name}`);
+
+            // Check if player has enough of the cost item
+            let totalCostItemCount = 0;
+            const costItemSlots: number[] = [];
+            
+            for (let i = 0; i < player.inventory.length; i++) {
+                const item = player.inventory[i];
+                if (item && item.itemId === trade.cost.itemType) {
+                    totalCostItemCount += item.count;
+                    costItemSlots.push(i);
+                }
+            }
+
+            if (totalCostItemCount < trade.cost.count) {
+                console.warn(`Shop trade: Player doesn't have enough ${trade.cost.itemType}. Has ${totalCostItemCount}, needs ${trade.cost.count}`);
+                return;
+            }
+
+            // Deduct cost items
+            let remainingCost = trade.cost.count;
+            for (const slotIndex of costItemSlots) {
+                if (remainingCost <= 0) break;
+                
+                const item = player.inventory[slotIndex];
+                if (!item) continue;
+
+                const deductAmount = Math.min(item.count, remainingCost);
+                item.count -= deductAmount;
+                remainingCost -= deductAmount;
+
+                // If count reaches 0, replace with empty item
+                if (item.count <= 0) {
+                    const emptyItem = new InventoryItem();
+                    emptyItem.itemId = ItemType.EMPTY;
+                    emptyItem.count = 0;
+                    player.inventory[slotIndex] = emptyItem;
+                }
+            }
+
+            // Add reward items to inventory
+            const rewardItemDef = ITEM_DEFINITIONS[trade.reward.itemType];
+            let remainingReward = trade.reward.count;
+
+            // First, try to stack with existing items
+            for (let i = 0; i < player.inventory.length && remainingReward > 0; i++) {
+                const item = player.inventory[i];
+                if (item && item.itemId === trade.reward.itemType && item.count < rewardItemDef.maxStack) {
+                    const addAmount = Math.min(remainingReward, rewardItemDef.maxStack - item.count);
+                    item.count += addAmount;
+                    remainingReward -= addAmount;
+                }
+            }
+
+            // Then, fill empty slots
+            for (let i = 0; i < player.inventory.length && remainingReward > 0; i++) {
+                const item = player.inventory[i];
+                if (item && item.itemId === ItemType.EMPTY) {
+                    const addAmount = Math.min(remainingReward, rewardItemDef.maxStack);
+                    item.itemId = trade.reward.itemType;
+                    item.count = addAmount;
+                    remainingReward -= addAmount;
+                }
+            }
+
+            if (remainingReward > 0) {
+                console.warn(`Shop trade: Could not fit all reward items. ${remainingReward} items lost.`);
+            }
+
+            console.log(`Shop trade complete: ${trade.name}`);
         });
 
         // Simulation Loop
@@ -496,6 +583,7 @@ export class GameRoom extends Room<GameState> {
         player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
         player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
         player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
+        player.inventory.push(createItem(ItemType.GOLD_INGOT, 10)); // Initial gold for testing
 
         // Fill remaining slots with empty items
         while (player.inventory.length < INVENTORY_SIZE) {

@@ -4,6 +4,9 @@ export enum ItemType {
     // 特殊物品
     EMPTY = 'empty',
     
+    // 货币
+    GOLD_INGOT = 'gold_ingot',
+    
     // 武器
     BOW = 'bow',
     FIREBALL = 'fireball',
@@ -18,6 +21,7 @@ export enum ItemType {
 // 精确的类型别名
 export type WeaponItem = ItemType.BOW | ItemType.FIREBALL | ItemType.DART;
 export type BlockItem = ItemType.WOOD | ItemType.STONE | ItemType.DIAMOND;
+export type CurrencyItem = ItemType.GOLD_INGOT;
 export type EmptyItem = ItemType.EMPTY;
 
 // 武器集合
@@ -34,9 +38,15 @@ export const BLOCKS = new Set<BlockItem>([
     ItemType.DIAMOND
 ]);
 
+// 货币集合
+export const CURRENCIES = new Set<CurrencyItem>([
+    ItemType.GOLD_INGOT
+]);
+
 // 辅助函数（带类型守卫）
 export const isWeapon = (itemId: ItemType): itemId is WeaponItem => WEAPONS.has(itemId as WeaponItem);
 export const isBlock = (itemId: ItemType): itemId is BlockItem => BLOCKS.has(itemId as BlockItem);
+export const isCurrency = (itemId: ItemType): itemId is CurrencyItem => CURRENCIES.has(itemId as CurrencyItem);
 export const isEmpty = (itemId: ItemType): itemId is EmptyItem => itemId === ItemType.EMPTY;
 
 // 向后兼容的类型别名（可以逐步移除）
@@ -76,6 +86,7 @@ export const INVENTORY_SIZE = 9;
 // 统一物品定义
 export const ITEM_DEFINITIONS: Record<ItemType, { maxStack: number, name: string, color: number, icon: string }> = {
     [ItemType.EMPTY]: { maxStack: 0, name: 'Empty', color: 0x000000, icon: '' },
+    [ItemType.GOLD_INGOT]: { maxStack: 64, name: 'Gold Ingot', color: 0xFFD700, icon: 'game-icons:gold-bar' },
     [ItemType.BOW]: { maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow' },
     [ItemType.FIREBALL]: { maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball' },
     [ItemType.DART]: { maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers' },
@@ -172,6 +183,66 @@ export const COLLISION_CATEGORIES = {
     BED: 8,
     BLOCK: 16
 };
+
+// 商店交易配置
+export interface ShopTrade {
+    id: string;
+    cost: { itemType: ItemType, count: number };
+    reward: { itemType: ItemType, count: number };
+    name: string;
+    description: string;
+}
+
+export const SHOP_TRADES: ShopTrade[] = [
+    // 武器交易
+    {
+        id: 'buy_bow',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 2 },
+        reward: { itemType: ItemType.BOW, count: 1 },
+        name: 'Buy Bow',
+        description: 'A reliable ranged weapon'
+    },
+    {
+        id: 'buy_fireball',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 5 },
+        reward: { itemType: ItemType.FIREBALL, count: 1 },
+        name: 'Buy Fireball',
+        description: 'Powerful but slow projectile'
+    },
+    {
+        id: 'buy_dart',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 3 },
+        reward: { itemType: ItemType.DART, count: 1 },
+        name: 'Buy Dart',
+        description: 'Fast and cheap weapon'
+    },
+    
+    // 方块交易
+    {
+        id: 'buy_wood_8',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 1 },
+        reward: { itemType: ItemType.WOOD, count: 8 },
+        name: 'Buy Wood (8x)',
+        description: 'Basic building material'
+    },
+    {
+        id: 'buy_stone_8',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 2 },
+        reward: { itemType: ItemType.STONE, count: 8 },
+        name: 'Buy Stone (8x)',
+        description: 'Stronger building material'
+    },
+    {
+        id: 'buy_diamond_4',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 4 },
+        reward: { itemType: ItemType.DIAMOND, count: 4 },
+        name: 'Buy Diamond (4x)',
+        description: 'Strongest building material'
+    }
+];
+
+// 商店交互距离
+export const SHOP_INTERACTION_RANGE = 100; // 玩家与床的距离
 
 // 对称地图障碍物
 export const WALLS = [

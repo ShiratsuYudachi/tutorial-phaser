@@ -4,7 +4,7 @@ import { BACKEND_URL } from "../backend";
 
 import type { GameState } from "../../../server/src/shared/Schema";
 import { Player, Bullet, Block, Bed, Entity } from "../../../server/src/shared/Schema";
-import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock } from "../../../server/src/shared/Constants";
+import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_INTERACTION_RANGE } from "../../../server/src/shared/Constants";
 import { InputData } from "../../../server/src/shared/Schema";
 
 import { gameStore } from "../ui/GameStore";
@@ -446,6 +446,9 @@ export class GameScene extends Phaser.Scene {
                 visual.y = Phaser.Math.Linear(visual.y, visual.getData('serverY'), t);
             }
         });
+
+        // Check if player is near their team's bed
+        this.checkNearBed();
         
         // Rotate player visual
         const playerVisual = this.entityVisuals.get(this.currentPlayerId);
@@ -563,5 +566,33 @@ export class GameScene extends Phaser.Scene {
         this.room.send(0, this.inputPayload);
         
         this.lastMouseDown = this.mousePointer.isDown;
+    }
+
+    checkNearBed() {
+        const player = gameStore.currentPlayer;
+        if (!player || !this.room || !this.room.state) return;
+
+        // Find the player's team bed
+        let teamBed: Bed | null = null;
+        this.room.state.entities.forEach((entity) => {
+            if (entity.type === 'bed') {
+                const bed = entity as Bed;
+                if (bed.teamId === player.teamId) {
+                    teamBed = bed;
+                }
+            }
+        });
+
+        if (!teamBed) {
+            gameStore.setNearBed(false);
+            return;
+        }
+
+        // Calculate distance
+        const dx = player.x - teamBed.x;
+        const dy = player.y - teamBed.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        gameStore.setNearBed(distance <= SHOP_INTERACTION_RANGE);
     }
 }

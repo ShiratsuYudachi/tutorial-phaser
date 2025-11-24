@@ -12,6 +12,10 @@ class GameStore {
     listeners: Set<Listener> = new Set();
     isReady: boolean = false;
     private connectPromise?: Promise<Room<GameState>>;
+    
+    // Shop state
+    isShopOpen: boolean = false;
+    isNearBed: boolean = false;
 
     // Singleton instance
     static instance = new GameStore();
@@ -147,6 +151,30 @@ class GameStore {
         const player = this.room.state.entities.get(this.currentPlayerId);
         return player as Player | null;
     }
+
+    // Shop methods
+    openShop() {
+        this.isShopOpen = true;
+        this.notify();
+    }
+
+    closeShop() {
+        this.isShopOpen = false;
+        this.notify();
+    }
+
+    setNearBed(isNear: boolean) {
+        if (this.isNearBed !== isNear) {
+            this.isNearBed = isNear;
+            this.notify();
+        }
+    }
+
+    executeTrade(tradeId: string) {
+        if (this.room) {
+            this.room.send("shop_trade", { tradeId });
+        }
+    }
 }
 
 export const gameStore = GameStore.instance;
@@ -175,4 +203,19 @@ export function useGameStoreReady() {
     }, []);
 
     return isReady;
+}
+
+export function useShopState() {
+    const [isOpen, setIsOpen] = useState(gameStore.isShopOpen);
+    const [isNearBed, setIsNearBed] = useState(gameStore.isNearBed);
+
+    useEffect(() => {
+        const update = () => {
+            setIsOpen(gameStore.isShopOpen);
+            setIsNearBed(gameStore.isNearBed);
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return { isOpen, isNearBed };
 }
