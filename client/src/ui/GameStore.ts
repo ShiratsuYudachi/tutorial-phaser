@@ -130,7 +130,6 @@ class GameStore {
     }
 
     notify() {
-        console.log("GameStore: notifying", this.listeners.size, "listeners");
         this.listeners.forEach(l => l());
     }
 
