@@ -72,7 +72,9 @@ export enum EntityType {
     PLAYER = 'player',
     BULLET = 'bullet',
     BLOCK = 'block',
-    BED = 'bed'
+    BED = 'bed',
+    DROPPED_ITEM = 'dropped_item',
+    RESOURCE_GENERATOR = 'resource_generator'
 }
 
 // 队伍类型枚举
@@ -83,16 +85,57 @@ export enum TeamType {
 
 export const INVENTORY_SIZE = 9;
 
+// 掉落物视觉配置
+export interface DroppedItemVisual {
+    // 当前使用几何图形
+    shape: 'circle' | 'square' | 'diamond' | 'hexagon';
+    size: number; // 主体大小
+    glowSize: number; // 光晕大小
+    // 未来可以添加：
+    // texture?: string; // PNG 素材路径
+    // spriteKey?: string; // Phaser 纹理键
+}
+
 // 统一物品定义
-export const ITEM_DEFINITIONS: Record<ItemType, { maxStack: number, name: string, color: number, icon: string }> = {
-    [ItemType.EMPTY]: { maxStack: 0, name: 'Empty', color: 0x000000, icon: '' },
-    [ItemType.GOLD_INGOT]: { maxStack: 64, name: 'Gold Ingot', color: 0xFFD700, icon: 'game-icons:gold-bar' },
-    [ItemType.BOW]: { maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow' },
-    [ItemType.FIREBALL]: { maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball' },
-    [ItemType.DART]: { maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers' },
-    [ItemType.WOOD]: { maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'game-icons:wood-pile' },
-    [ItemType.STONE]: { maxStack: 64, name: 'Stone', color: 0x808080, icon: 'game-icons:stone-block' },
-    [ItemType.DIAMOND]: { maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:diamond' }
+export const ITEM_DEFINITIONS: Record<ItemType, { 
+    maxStack: number, 
+    name: string, 
+    color: number, 
+    icon: string,
+    droppedVisual: DroppedItemVisual 
+}> = {
+    [ItemType.EMPTY]: { 
+        maxStack: 0, name: 'Empty', color: 0x000000, icon: '',
+        droppedVisual: { shape: 'circle', size: 12, glowSize: 18 }
+    },
+    [ItemType.GOLD_INGOT]: { 
+        maxStack: 64, name: 'Gold Ingot', color: 0xFFD700, icon: 'game-icons:gold-bar',
+        droppedVisual: { shape: 'hexagon', size: 14, glowSize: 20 }
+    },
+    [ItemType.BOW]: { 
+        maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow',
+        droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
+    },
+    [ItemType.FIREBALL]: { 
+        maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball',
+        droppedVisual: { shape: 'circle', size: 14, glowSize: 24 }
+    },
+    [ItemType.DART]: { 
+        maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers',
+        droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
+    },
+    [ItemType.WOOD]: { 
+        maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'game-icons:wood-pile',
+        droppedVisual: { shape: 'square', size: 14, glowSize: 20 }
+    },
+    [ItemType.STONE]: { 
+        maxStack: 64, name: 'Stone', color: 0x808080, icon: 'game-icons:stone-block',
+        droppedVisual: { shape: 'square', size: 14, glowSize: 20 }
+    },
+    [ItemType.DIAMOND]: { 
+        maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:diamond',
+        droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
+    }
 };
 
 // 武器配置
@@ -243,6 +286,43 @@ export const SHOP_TRADES: ShopTrade[] = [
 
 // 商店交互距离
 export const SHOP_INTERACTION_RANGE = 100; // 玩家与床的距离
+
+// 掉落物配置
+export const DROPPED_ITEM_CONFIG = {
+    pickupRange: 40, // 拾取距离
+    despawnTime: 300000, // 5分钟后消失 (ms)
+    mergeRange: 30, // 相同物品合并距离
+    physicsRadius: 10, // 碰撞体积半径
+    floatSpeed: 0.5, // 浮动速度
+    floatHeight: 5 // 浮动高度
+};
+
+// 资源生成器配置
+export const RESOURCE_GENERATOR_CONFIG = {
+    spawnInterval: 10000, // 10秒生成一次 (ms)
+    spawnRadius: 50, // 在周围多远生成
+    maxDropsNearby: 5, // 附近最多掉落物数量
+    generatorRadius: 20, // 生成器碰撞半径
+    generatorColor: 0x00ff00 // 生成器颜色
+};
+
+// 资源生成器生成表
+export interface GeneratorLootTable {
+    itemType: ItemType;
+    count: { min: number, max: number };
+    weight: number; // 权重
+}
+
+export const GENERATOR_LOOT_TABLES: Record<string, GeneratorLootTable[]> = {
+    'gold_generator': [
+        { itemType: ItemType.GOLD_INGOT, count: { min: 1, max: 3 }, weight: 1 }
+    ],
+    'resource_generator': [
+        { itemType: ItemType.WOOD, count: { min: 2, max: 5 }, weight: 3 },
+        { itemType: ItemType.STONE, count: { min: 2, max: 4 }, weight: 2 },
+        { itemType: ItemType.DIAMOND, count: { min: 1, max: 2 }, weight: 1 }
+    ]
+};
 
 // 对称地图障碍物
 export const WALLS = [

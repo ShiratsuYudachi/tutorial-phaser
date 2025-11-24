@@ -3,11 +3,12 @@ import { Room, Client, getStateCallbacks } from "colyseus.js";
 import { BACKEND_URL } from "../backend";
 
 import type { GameState } from "../../../server/src/shared/Schema";
-import { Player, Bullet, Block, Bed, Entity } from "../../../server/src/shared/Schema";
-import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_INTERACTION_RANGE } from "../../../server/src/shared/Constants";
+import { Player, Bullet, Block, Bed, Entity, DroppedItem, ResourceGenerator } from "../../../server/src/shared/Schema";
+import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_INTERACTION_RANGE, RESOURCE_GENERATOR_CONFIG } from "../../../server/src/shared/Constants";
 import { InputData } from "../../../server/src/shared/Schema";
 
 import { gameStore } from "../ui/GameStore";
+import { DroppedItemRenderer } from "./DroppedItemRenderer";
 
 export class GameScene extends Phaser.Scene {
     room: Room<GameState>;
@@ -27,6 +28,12 @@ export class GameScene extends Phaser.Scene {
 
     // Inventory Keys (1-9)
     inventoryKeys: Phaser.Input.Keyboard.Key[] = [];
+
+    // Drop Item Key (Q)
+    qKey: Phaser.Input.Keyboard.Key;
+
+    // Dropped Item Renderer
+    droppedItemRenderer: DroppedItemRenderer;
 
     // UI Elements
     // REMOVED Phaser Inventory UI Elements
@@ -150,7 +157,14 @@ export class GameScene extends Phaser.Scene {
              this.inventoryKeys.push(this.input.keyboard.addKey(keyCodes[i]));
         }
 
+        // Drop item key (Q)
+        this.qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+
         this.mousePointer = this.input.activePointer;
+        
+        // Initialize dropped item renderer
+        this.droppedItemRenderer = new DroppedItemRenderer(this);
+        
         await this.connect();
         this.cameras.main.setBounds(0, 0, GAME_CONFIG.mapWidth, GAME_CONFIG.mapHeight);
         
@@ -236,6 +250,12 @@ export class GameScene extends Phaser.Scene {
                     visual = this.createBlock(entity as Block);
                 } else if (entity instanceof Bed || entity.type === 'bed') {
                     visual = this.createBed(entity as Bed);
+                } else if (entity.type === 'dropped_item') {
+                    const drop = entity as DroppedItem;
+                    visual = this.createDroppedItem(drop);
+                } else if (entity.type === 'resource_generator') {
+                    const generator = entity as ResourceGenerator;
+                    visual = this.createResourceGenerator(generator);
                 }
 
                 if (visual) {
@@ -551,6 +571,9 @@ export class GameScene extends Phaser.Scene {
             }
         }
         
+        // Drop Item (Q key)
+        this.inputPayload.dropItem = Phaser.Input.Keyboard.JustDown(this.qKey);
+        
         // Action Inputs
         const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
         this.inputPayload.isDown = this.mousePointer.isDown;
@@ -594,5 +617,78 @@ export class GameScene extends Phaser.Scene {
         const distance = Math.sqrt(dx * dx + dy * dy);
 
         gameStore.setNearBed(distance <= SHOP_INTERACTION_RANGE);
+    }
+
+    createDroppedItem(drop: DroppedItem): Phaser.GameObjects.Container {
+        const container = this.droppedItemRenderer.createDroppedItem(
+            drop.itemType as ItemType,
+            drop.count,
+            drop.x,
+            drop.y
+        );
+
+        // Listen for count changes
+        const updateCount = () => {
+            this.droppedItemRenderer.updateCount(container, drop.count);
+        };
+
+        // Note: Colyseus onChange for primitive properties
+        // We'll update count via the main onChange handler in onAdd
+
+        return container;
+    }
+
+    createResourceGenerator(generator: ResourceGenerator): Phaser.GameObjects.Container {
+        const container = this.add.container(generator.x, generator.y);
+
+        // Create visual representation
+        const size = RESOURCE_GENERATOR_CONFIG.generatorRadius;
+        
+        // Base circle
+        const base = this.add.circle(0, 0, size, RESOURCE_GENERATOR_CONFIG.generatorColor, 0.6);
+        
+        // Rotating outer ring
+        const ring = this.add.graphics();
+        ring.lineStyle(3, RESOURCE_GENERATOR_CONFIG.generatorColor, 1);
+        ring.strokeCircle(0, 0, size + 5);
+        
+        // Center glow
+        const glow = this.add.circle(0, 0, size * 0.6, 0xffffff, 0.4);
+        
+        container.add([base, ring, glow]);
+
+        // Add pulsing animation
+        this.tweens.add({
+            targets: glow,
+            alpha: 0.1,
+            scale: 1.2,
+            duration: 1500,
+            ease: 'Sine.easeInOut',
+            yoyo: true,
+            repeat: -1
+        });
+
+        // Add rotation animation to ring
+        this.tweens.add({
+            targets: ring,
+            angle: 360,
+            duration: 4000,
+            ease: 'Linear',
+            repeat: -1
+        });
+
+        // Add text label
+        const label = this.add.text(0, -size - 15, 
+            generator.generatorType === 'gold_generator' ? 'Gold' : 'Resources',
+            {
+                fontSize: '12px',
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 3
+            }
+        ).setOrigin(0.5);
+        container.add(label);
+
+        return container;
     }
 }

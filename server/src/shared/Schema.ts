@@ -14,6 +14,7 @@ export interface InputData {
     mouseX: number;          // World X
     mouseY: number;          // World Y
     selectedSlot?: number;   // 0-8, if user pressed number key
+    dropItem?: boolean;      // Q key to drop item
 }
 
 export class InventoryItem extends Schema {
@@ -61,6 +62,18 @@ export class Block extends HealthEntity {
 
 export class Bed extends HealthEntity {
     @type("string") teamId: string; // TeamType
+}
+
+export class DroppedItem extends Entity {
+    @type("string") itemType: string; // ItemType
+    @type("number") count: number;
+    @type("number") spawnTime: number; // For despawn logic
+}
+
+export class ResourceGenerator extends Entity {
+    @type("string") generatorType: string; // 'gold_generator' | 'resource_generator'
+    @type("number") lastSpawnTime: number = 0;
+    @type("number") nearbyDropCount: number = 0;
 }
 
 export class GameState extends Schema {

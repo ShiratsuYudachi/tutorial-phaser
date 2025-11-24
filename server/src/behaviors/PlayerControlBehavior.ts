@@ -20,7 +20,13 @@ export class PlayerControlBehavior extends Behavior<Player> {
                 }
             }
 
-            // 2. Handle Item Usage (Shoot or Place)
+            // 2. Handle Drop Item (Q key)
+            if (input.dropItem && this.onDropItem) {
+                const sessionId = (this.agent as any).sessionId;
+                this.onDropItem(sessionId, player.selectedSlot);
+            }
+
+            // 3. Handle Item Usage (Shoot or Place)
             // Only if mouse is down
             if (input.isDown) {
                 // Check what's in the current slot
@@ -72,4 +78,5 @@ export class PlayerControlBehavior extends Behavior<Player> {
 
     onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) => void;
     onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockItem) => void;
+    onDropItem: (playerId: string, slotIndex: number) => void;
 }

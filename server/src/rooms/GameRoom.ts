@@ -1,7 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
-import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_TRADES, ITEM_DEFINITIONS } from "../shared/Constants";
+import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem, DroppedItem, ResourceGenerator } from "../shared/Schema";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -185,12 +185,33 @@ export class GameRoom extends Room<GameState> {
             console.log(`Shop trade complete: ${trade.name}`);
         });
 
+        // Drop Item Message (manual drop via message)
+        this.onMessage("drop_item", (client, data: { slotIndex: number }) => {
+            const player = this.state.entities.get(client.sessionId) as Player;
+            if (!player || player.isDead) return;
+
+            this.dropItemFromSlot(player, data.slotIndex);
+        });
+
+        // Create resource generators for testing
+        this.createResourceGenerator('gold_generator', 400, 150);
+        this.createResourceGenerator('resource_generator', 400, 450);
+
         // Simulation Loop
         this.setSimulationInterval((deltaTime) => {
             this.elapsedTime += deltaTime;
             while (this.elapsedTime >= this.fixedTimeStep) {
                 this.elapsedTime -= this.fixedTimeStep;
                 this.fixedTick(this.fixedTimeStep);
+            }
+
+            // Run slower updates (every frame, not every fixed step)
+            this.checkItemPickup();
+            this.updateResourceGenerators();
+            
+            // Cleanup old items every 60 seconds
+            if (Math.random() < 0.001) { // ~1% chance per frame = ~60 times/min at 60fps
+                this.cleanupDroppedItems();
             }
         });
     }
@@ -611,6 +632,12 @@ export class GameRoom extends Room<GameState> {
             },
             (playerId, x, y, blockType) => {
                 this.placeBlock(playerId, x, y, blockType);
+            },
+            (playerId, slotIndex) => {
+                const player = this.state.entities.get(playerId) as Player;
+                if (player) {
+                    this.dropItemFromSlot(player, slotIndex);
+                }
             }
         );
         this.agents.set(client.sessionId, agent);
@@ -624,5 +651,280 @@ export class GameRoom extends Room<GameState> {
             this.agents.delete(client.sessionId);
         }
         this.state.entities.delete(client.sessionId);
+    }
+
+    // ============ Dropped Item System ============
+
+    /**
+     * Drop an item from player's inventory slot
+     */
+    dropItemFromSlot(player: Player, slotIndex: number) {
+        if (slotIndex < 0 || slotIndex >= player.inventory.length) return;
+
+        const item = player.inventory[slotIndex];
+        if (!item || item.itemId === ItemType.EMPTY || item.count <= 0) return;
+
+        // Drop the item at player's position with slight offset
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 30;
+        const dropX = player.x + Math.cos(angle) * distance;
+        const dropY = player.y + Math.sin(angle) * distance;
+
+        this.spawnDroppedItem(item.itemId as ItemType, item.count, dropX, dropY);
+
+        // Clear the inventory slot
+        const emptyItem = new InventoryItem();
+        emptyItem.itemId = ItemType.EMPTY;
+        emptyItem.count = 0;
+        player.inventory[slotIndex] = emptyItem;
+
+        console.log(`Player dropped ${item.count}x ${item.itemId} at (${dropX}, ${dropY})`);
+    }
+
+    /**
+     * Spawn a dropped item in the world
+     */
+    spawnDroppedItem(itemType: ItemType, count: number, x: number, y: number): string {
+        // Check if there's a nearby dropped item of the same type to merge with
+        const mergeTarget = this.findNearbyDroppedItem(itemType, x, y, DROPPED_ITEM_CONFIG.mergeRange);
+        
+        if (mergeTarget) {
+            // Merge with existing drop
+            mergeTarget.count += count;
+            console.log(`Merged drop: ${itemType} now has ${mergeTarget.count}`);
+            return mergeTarget.type; // Return existing ID
+        }
+
+        // Create new dropped item
+        const dropId = `drop_${Math.random().toString(36).substr(2, 9)}`;
+        const droppedItem = new DroppedItem();
+        droppedItem.type = EntityType.DROPPED_ITEM;
+        droppedItem.itemType = itemType;
+        droppedItem.count = count;
+        droppedItem.x = x;
+        droppedItem.y = y;
+        droppedItem.spawnTime = Date.now();
+
+        this.state.entities.set(dropId, droppedItem);
+        console.log(`Spawned dropped item: ${dropId} (${count}x ${itemType})`);
+
+        return dropId;
+    }
+
+    /**
+     * Find nearby dropped item of the same type
+     */
+    findNearbyDroppedItem(itemType: ItemType, x: number, y: number, range: number): DroppedItem | null {
+        let closest: DroppedItem | null = null;
+        let closestDist = range;
+
+        this.state.entities.forEach((entity) => {
+            if (entity.type === EntityType.DROPPED_ITEM) {
+                const drop = entity as DroppedItem;
+                if (drop.itemType === itemType) {
+                    const dx = drop.x - x;
+                    const dy = drop.y - y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < closestDist) {
+                        closest = drop;
+                        closestDist = dist;
+                    }
+                }
+            }
+        });
+
+        return closest;
+    }
+
+    /**
+     * Check and handle item pickup for all players
+     */
+    checkItemPickup() {
+        this.state.entities.forEach((entity, playerId) => {
+            if (entity.type === EntityType.PLAYER) {
+                const player = entity as Player;
+                if (player.isDead) return;
+
+                // Find nearby dropped items
+                const nearbyDrops: Array<{ id: string, drop: DroppedItem, distance: number }> = [];
+
+                this.state.entities.forEach((otherEntity, dropId) => {
+                    if (otherEntity.type === EntityType.DROPPED_ITEM) {
+                        const drop = otherEntity as DroppedItem;
+                        const dx = drop.x - player.x;
+                        const dy = drop.y - player.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        if (distance <= DROPPED_ITEM_CONFIG.pickupRange) {
+                            nearbyDrops.push({ id: dropId, drop, distance });
+                        }
+                    }
+                });
+
+                // Pick up the closest item
+                if (nearbyDrops.length > 0) {
+                    nearbyDrops.sort((a, b) => a.distance - b.distance);
+                    const { id, drop } = nearbyDrops[0];
+                    this.pickupItem(player, id, drop);
+                }
+            }
+        });
+    }
+
+    /**
+     * Add item to player's inventory
+     */
+    pickupItem(player: Player, dropId: string, drop: DroppedItem) {
+        const itemDef = ITEM_DEFINITIONS[drop.itemType as ItemType];
+        let remaining = drop.count;
+
+        // Try to stack with existing items
+        for (let i = 0; i < player.inventory.length && remaining > 0; i++) {
+            const slot = player.inventory[i];
+            if (slot && slot.itemId === drop.itemType && slot.count < itemDef.maxStack) {
+                const addAmount = Math.min(remaining, itemDef.maxStack - slot.count);
+                slot.count += addAmount;
+                remaining -= addAmount;
+            }
+        }
+
+        // Fill empty slots
+        for (let i = 0; i < player.inventory.length && remaining > 0; i++) {
+            const slot = player.inventory[i];
+            if (slot && slot.itemId === ItemType.EMPTY) {
+                const addAmount = Math.min(remaining, itemDef.maxStack);
+                slot.itemId = drop.itemType;
+                slot.count = addAmount;
+                remaining -= addAmount;
+            }
+        }
+
+        if (remaining === 0) {
+            // Fully picked up
+            this.state.entities.delete(dropId);
+            console.log(`Player picked up ${drop.count}x ${drop.itemType}`);
+        } else {
+            // Partially picked up
+            drop.count = remaining;
+            console.log(`Player partially picked up ${drop.itemType}, ${remaining} remaining`);
+        }
+    }
+
+    /**
+     * Clean up old dropped items
+     */
+    cleanupDroppedItems() {
+        const now = Date.now();
+        const toDelete: string[] = [];
+
+        this.state.entities.forEach((entity, id) => {
+            if (entity.type === EntityType.DROPPED_ITEM) {
+                const drop = entity as DroppedItem;
+                if (now - drop.spawnTime > DROPPED_ITEM_CONFIG.despawnTime) {
+                    toDelete.push(id);
+                }
+            }
+        });
+
+        toDelete.forEach(id => {
+            this.state.entities.delete(id);
+            console.log(`Despawned old dropped item: ${id}`);
+        });
+    }
+
+    // ============ Resource Generator System ============
+
+    /**
+     * Create a resource generator
+     */
+    createResourceGenerator(generatorType: string, x: number, y: number): string {
+        const genId = `generator_${Math.random().toString(36).substr(2, 9)}`;
+        const generator = new ResourceGenerator();
+        generator.type = EntityType.RESOURCE_GENERATOR;
+        generator.generatorType = generatorType;
+        generator.x = x;
+        generator.y = y;
+        generator.lastSpawnTime = Date.now();
+        generator.nearbyDropCount = 0;
+
+        this.state.entities.set(genId, generator);
+        console.log(`Created resource generator: ${genId} (${generatorType}) at (${x}, ${y})`);
+
+        return genId;
+    }
+
+    /**
+     * Update all resource generators
+     */
+    updateResourceGenerators() {
+        const now = Date.now();
+
+        this.state.entities.forEach((entity, genId) => {
+            if (entity.type === EntityType.RESOURCE_GENERATOR) {
+                const generator = entity as ResourceGenerator;
+
+                // Check if it's time to spawn
+                if (now - generator.lastSpawnTime >= RESOURCE_GENERATOR_CONFIG.spawnInterval) {
+                    // Count nearby drops
+                    const nearbyCount = this.countNearbyDrops(generator.x, generator.y, RESOURCE_GENERATOR_CONFIG.spawnRadius);
+
+                    if (nearbyCount < RESOURCE_GENERATOR_CONFIG.maxDropsNearby) {
+                        this.generateResource(generator);
+                        generator.lastSpawnTime = now;
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Generate a resource from a generator
+     */
+    generateResource(generator: ResourceGenerator) {
+        const lootTable = GENERATOR_LOOT_TABLES[generator.generatorType];
+        if (!lootTable) return;
+
+        // Weighted random selection
+        const totalWeight = lootTable.reduce((sum, entry) => sum + entry.weight, 0);
+        let random = Math.random() * totalWeight;
+
+        for (const entry of lootTable) {
+            random -= entry.weight;
+            if (random <= 0) {
+                // Selected this entry
+                const count = Math.floor(Math.random() * (entry.count.max - entry.count.min + 1)) + entry.count.min;
+                
+                // Spawn at random position around generator
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * RESOURCE_GENERATOR_CONFIG.spawnRadius;
+                const x = generator.x + Math.cos(angle) * distance;
+                const y = generator.y + Math.sin(angle) * distance;
+
+                this.spawnDroppedItem(entry.itemType, count, x, y);
+                break;
+            }
+        }
+    }
+
+    /**
+     * Count dropped items near a position
+     */
+    countNearbyDrops(x: number, y: number, range: number): number {
+        let count = 0;
+
+        this.state.entities.forEach((entity) => {
+            if (entity.type === EntityType.DROPPED_ITEM) {
+                const drop = entity as DroppedItem;
+                const dx = drop.x - x;
+                const dy = drop.y - y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance <= range) {
+                    count++;
+                }
+            }
+        });
+
+        return count;
     }
 }
