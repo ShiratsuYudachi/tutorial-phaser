@@ -60,6 +60,32 @@ export class GameRoom extends Room<GameState> {
             }
         });
 
+        // Inventory Actions
+        this.onMessage("inventory_action", (client, data: any) => {
+            const player = this.state.entities.get(client.sessionId) as Player;
+            if (!player) return;
+
+            if (data.type === "select") {
+                const slotIndex = data.index;
+                if (slotIndex >= 0 && slotIndex < player.inventory.length) {
+                    player.selectedSlot = slotIndex;
+                }
+            } else if (data.type === "swap") {
+                const { fromIndex, toIndex } = data;
+                if (fromIndex >= 0 && fromIndex < player.inventory.length &&
+                    toIndex >= 0 && toIndex < player.inventory.length) {
+                    
+                    const itemA = player.inventory[fromIndex];
+                    const itemB = player.inventory[toIndex];
+                    
+                    if (itemA && itemB) {
+                        player.inventory[fromIndex] = itemB;
+                        player.inventory[toIndex] = itemA;
+                    }
+                }
+            }
+        });
+
         // Simulation Loop
         this.setSimulationInterval((deltaTime) => {
             this.elapsedTime += deltaTime;

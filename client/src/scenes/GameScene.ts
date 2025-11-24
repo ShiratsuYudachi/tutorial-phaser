@@ -7,9 +7,11 @@ import { Player, Bullet, Block, Bed, Entity } from "../../../server/src/shared/S
 import { GAME_CONFIG, WALLS, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType, INVENTORY_SIZE, ITEM_DEFINITIONS } from "../../../server/src/shared/Constants";
 import { InputData } from "../../../server/src/shared/Schema";
 
+import { gameStore } from "../ui/GameStore";
+
 export class GameScene extends Phaser.Scene {
     room: Room<GameState>;
-
+    
     // 统一管理所有可视对象 (id -> GameObject)
     entityVisuals = new Map<string, Phaser.GameObjects.Container | Phaser.GameObjects.Image | Phaser.GameObjects.Arc | Phaser.GameObjects.Rectangle>();
 
@@ -27,9 +29,7 @@ export class GameScene extends Phaser.Scene {
     inventoryKeys: Phaser.Input.Keyboard.Key[] = [];
 
     // UI Elements
-    inventoryContainer: Phaser.GameObjects.Container;
-    inventorySlots: Phaser.GameObjects.Rectangle[] = [];
-    inventoryHighlight: Phaser.GameObjects.Rectangle;
+    // REMOVED Phaser Inventory UI Elements
     
     // Preview
     blockPreview: Phaser.GameObjects.Rectangle;
@@ -155,7 +155,7 @@ export class GameScene extends Phaser.Scene {
         this.cameras.main.setBounds(0, 0, GAME_CONFIG.mapWidth, GAME_CONFIG.mapHeight);
         
         // UI Initialization
-        this.createInventoryUI();
+        // this.createInventoryUI(); // Removed
         
         // Preview elements
         this.blockPreview = this.add.rectangle(0, 0, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, 0xffffff, 0.5);
@@ -170,77 +170,6 @@ export class GameScene extends Phaser.Scene {
         this.createSoundEffects();
     }
     
-    createInventoryUI() {
-        this.inventoryContainer = this.add.container(400, 550); // Bottom center
-        this.inventoryContainer.setScrollFactor(0).setDepth(100);
-
-        const slotSize = 40;
-        const padding = 5;
-        const startX = -((INVENTORY_SIZE * (slotSize + padding)) / 2) + slotSize / 2;
-
-        for (let i = 0; i < INVENTORY_SIZE; i++) {
-            const x = startX + i * (slotSize + padding);
-            
-            // Slot Background
-            const slotBg = this.add.rectangle(x, 0, slotSize, slotSize, 0x222222);
-            slotBg.setStrokeStyle(1, 0x666666);
-            this.inventoryContainer.add(slotBg);
-            this.inventorySlots.push(slotBg);
-            
-            // Item Icon (Graphics - initially empty)
-            // We will recreate these dynamically in updateUI
-        }
-
-        // Highlight Selection
-        this.inventoryHighlight = this.add.rectangle(startX, 0, slotSize + 4, slotSize + 4);
-        this.inventoryHighlight.setStrokeStyle(3, 0xffffff);
-        this.inventoryContainer.add(this.inventoryHighlight);
-    }
-    
-    updateInventoryUI(player: Player) {
-        // Clear previous item visuals (except backgrounds and highlight)
-        // A bit inefficient to destroy/recreate every frame, but safe for now.
-        // Optimization: Only update on change.
-        this.inventoryContainer.list.forEach(child => {
-             if (child instanceof Phaser.GameObjects.Text || (child instanceof Phaser.GameObjects.Rectangle && child !== this.inventoryHighlight && !this.inventorySlots.includes(child as Phaser.GameObjects.Rectangle))) {
-                 child.destroy();
-             }
-        });
-
-        const slotSize = 40;
-        const padding = 5;
-        const startX = -((INVENTORY_SIZE * (slotSize + padding)) / 2) + slotSize / 2;
-
-        // Update Highlight Position
-        const selectedX = startX + player.selectedSlot * (slotSize + padding);
-        this.inventoryHighlight.setX(selectedX);
-
-        // Draw Items
-        player.inventory.forEach((item, index) => {
-            if (index >= INVENTORY_SIZE) return;
-            if (!item.itemId) return;
-
-            const x = startX + index * (slotSize + padding);
-            const def = ITEM_DEFINITIONS[item.itemId];
-            if (def) {
-                // Draw Item Color Block
-                const itemRect = this.add.rectangle(x, 0, slotSize - 10, slotSize - 10, def.color);
-                this.inventoryContainer.add(itemRect);
-
-                // Draw Count if > 1
-                if (item.count > 1) {
-                    const countText = this.add.text(x + 10, 10, item.count.toString(), {
-                        fontSize: '10px',
-                        color: '#ffffff',
-                        stroke: '#000000',
-                        strokeThickness: 2
-                    }).setOrigin(1, 0);
-                    this.inventoryContainer.add(countText);
-                }
-            }
-        });
-    }
-
     createSoundEffects() {
         // 创建弓箭音效
         if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
@@ -285,11 +214,31 @@ export class GameScene extends Phaser.Scene {
         try {
             this.room = await client.joinOrCreate<GameState>("game_room", {});
             console.log("Connected to room:", this.room.name);
+            
+            // Initialize GameStore for React
+            gameStore.setRoom(this.room, this.room.sessionId);
+            
             const state = this.room.state;
             const $ = getStateCallbacks(this.room);
 
             $(state).entities.onAdd((entity, id) => {
                 let visual;
+                
+                if (id === this.room.sessionId) {
+                    // Notify React on player changes
+                    gameStore.notify();
+                    if (entity instanceof Player || entity.type === 'player') {
+                        const p = entity as Player;
+                        
+                        $(p).onChange(() => gameStore.notify());
+                        
+                        // ArraySchema callbacks - casting to any to avoid TS issues with specific Colyseus versions
+                        const inv = p.inventory as any;
+                        if (inv.onAdd) inv.onAdd(() => gameStore.notify());
+                        if (inv.onRemove) inv.onRemove(() => gameStore.notify());
+                        if (inv.onChange) inv.onChange(() => gameStore.notify());
+                    }
+                }
 
                 if (entity instanceof Player || entity.type === 'player') {
                     visual = this.createPlayer(entity as Player, id);
@@ -529,7 +478,7 @@ export class GameScene extends Phaser.Scene {
         // UI Update & Preview
         const player = this.room.state.entities.get(this.currentPlayerId) as Player;
         if (player) {
-            this.updateInventoryUI(player);
+            // this.updateInventoryUI(player); // Removed
             
             // Determine if we should show block preview
             const selectedSlotIndex = player.selectedSlot;

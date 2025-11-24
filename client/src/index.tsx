@@ -2,6 +2,9 @@
 import Phaser from "phaser";
 import { GameScene } from "./scenes/GameScene";
 import { BACKEND_HTTP_URL } from "./backend";
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { App } from './ui/App';
 
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
@@ -20,6 +23,13 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 const game = new Phaser.Game(config);
+
+// Render React UI
+const container = document.getElementById('react-root');
+if (container) {
+    const root = createRoot(container);
+    root.render(<App />);
+}
 
 // --- Latency Simulation Logic ---
 const latencyInput = document.querySelector<HTMLInputElement>("input#latency");

@@ -13,6 +13,8 @@ export enum BlockType {
     DIAMOND = 'diamond' // 钻石方块 - HP 200
 }
 
+export type ItemType = WeaponType | BlockType;
+
 // 实体类型枚举
 export enum EntityType {
     PLAYER = 'player',
@@ -30,13 +32,13 @@ export enum TeamType {
 export const INVENTORY_SIZE = 9;
 
 // 统一物品定义
-export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block', maxStack: number, name: string, color: number }> = {
-    [WeaponType.BOW]: { type: 'weapon', maxStack: 1, name: 'Bow', color: 0xffff00 },
-    [WeaponType.FIREBALL]: { type: 'weapon', maxStack: 1, name: 'Fireball', color: 0xff4500 },
-    [WeaponType.DART]: { type: 'weapon', maxStack: 1, name: 'Dart', color: 0x00ffff },
-    [BlockType.WOOD]: { type: 'block', maxStack: 64, name: 'Wood', color: 0x8B4513 },
-    [BlockType.STONE]: { type: 'block', maxStack: 64, name: 'Stone', color: 0x808080 },
-    [BlockType.DIAMOND]: { type: 'block', maxStack: 64, name: 'Diamond', color: 0x00CED1 }
+export const ITEM_DEFINITIONS: Record<string, { type: 'weapon' | 'block', maxStack: number, name: string, color: number, icon: string }> = {
+    [WeaponType.BOW]: { type: 'weapon', maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'icons/bow.svg' },
+    [WeaponType.FIREBALL]: { type: 'weapon', maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'icons/fireball.svg' },
+    [WeaponType.DART]: { type: 'weapon', maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'icons/dart.svg' },
+    [BlockType.WOOD]: { type: 'block', maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'icons/wood.svg' },
+    [BlockType.STONE]: { type: 'block', maxStack: 64, name: 'Stone', color: 0x808080, icon: 'icons/stone.svg' },
+    [BlockType.DIAMOND]: { type: 'block', maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'icons/diamond.svg' }
 };
 
 // 武器配置
@@ -92,21 +94,21 @@ export const GAME_CONFIG = {
     playerRadius: 20,
     bulletRadius: 5,
     wallSize: 50,
-    
+
     // 战斗系统配置
     playerMaxHP: 100,
     bedMaxHP: 50,
     bulletDamage: 20,
     respawnTime: 3000, // 3秒重生时间 (ms)
-    
+
     // 队伍出生点
     redTeamSpawn: { x: 150, y: 300 },
     blueTeamSpawn: { x: 650, y: 300 },
-    
+
     // 床的位置（左右两边中心）
     redBedPos: { x: 80, y: 300 },
     blueBedPos: { x: 720, y: 300 },
-    
+
     // 建造系统配置
     blockSize: 40,          // 方块大小
     gridSize: 40,           // 网格大小
@@ -133,14 +135,14 @@ export const WALLS = [
     // 左侧障碍物
     { x: 200, y: 150, width: 50, height: 150 },
     { x: 200, y: 400, width: 50, height: 150 },
-    
+
     // 右侧障碍物（对称）
     { x: 550, y: 150, width: 50, height: 150 },
     { x: 550, y: 400, width: 50, height: 150 },
-    
+
     // 中央障碍物
     { x: 375, y: 275, width: 50, height: 50 },
-    
+
     // 四周的墙壁
     { x: 400, y: -25, width: 800, height: 50 }, // 上
     { x: 400, y: 625, width: 800, height: 50 }, // 下
