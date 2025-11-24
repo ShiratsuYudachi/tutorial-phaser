@@ -62,31 +62,31 @@ export class GameScene extends Phaser.Scene {
     generateSoundEffects() {
         // 生成弓箭音效（中频）
         const bowBuffer = this.generateWeaponSound(600, 0.12, 20);
-        if (bowBuffer && this.sound.context) {
+        if (bowBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.cache.audio.add('bow_shoot', bowBuffer);
         }
         
         // 生成火球音效（低频、更长）
         const fireballBuffer = this.generateWeaponSound(300, 0.18, 15);
-        if (fireballBuffer && this.sound.context) {
+        if (fireballBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.cache.audio.add('fireball_shoot', fireballBuffer);
         }
         
         // 生成飞镖音效（高频、短促）
         const dartBuffer = this.generateWeaponSound(1200, 0.08, 35);
-        if (dartBuffer && this.sound.context) {
+        if (dartBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.cache.audio.add('dart_shoot', dartBuffer);
         }
         
         // 生成放置方块音效
         const placeBuffer = this.generatePlaceSound();
-        if (placeBuffer && this.sound.context) {
+        if (placeBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.cache.audio.add('place', placeBuffer);
         }
     }
     
     generateWeaponSound(frequency: number, duration: number, decay: number): AudioBuffer | null {
-        if (!this.sound.context) return null;
+        if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) return null;
         
         const audioContext = this.sound.context;
         const sampleRate = audioContext.sampleRate;
@@ -109,7 +109,7 @@ export class GameScene extends Phaser.Scene {
     }
     
     generatePlaceSound(): AudioBuffer | null {
-        if (!this.sound.context) return null;
+        if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) return null;
         
         const audioContext = this.sound.context;
         const sampleRate = audioContext.sampleRate;
@@ -188,7 +188,7 @@ export class GameScene extends Phaser.Scene {
     
     createSoundEffects() {
         // 创建弓箭音效
-        if (this.sound.context) {
+        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.bowShootSound = this.sound.add('bow_shoot', {
                 volume: 0.35,
                 rate: 1
@@ -196,7 +196,7 @@ export class GameScene extends Phaser.Scene {
         }
         
         // 创建火球音效
-        if (this.sound.context) {
+        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.fireballShootSound = this.sound.add('fireball_shoot', {
                 volume: 0.4,
                 rate: 1
@@ -204,7 +204,7 @@ export class GameScene extends Phaser.Scene {
         }
         
         // 创建飞镖音效
-        if (this.sound.context) {
+        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.dartShootSound = this.sound.add('dart_shoot', {
                 volume: 0.3,
                 rate: 1
@@ -212,7 +212,7 @@ export class GameScene extends Phaser.Scene {
         }
         
         // 创建放置方块音效
-        if (this.sound.context) {
+        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.placeBlockSound = this.sound.add('place', {
                 volume: 0.4,
                 rate: 1.2
@@ -274,9 +274,9 @@ export class GameScene extends Phaser.Scene {
                         this.playWeaponSound(bullet.weaponType as WeaponType);
                     }
                 } else if (entity instanceof Block || entity.type === 'block') {
-                    visual = this.createBlock(entity);
+                    visual = this.createBlock(entity as Block);
                 } else if (entity instanceof Bed || entity.type === 'bed') {
-                    visual = this.createBed(entity);
+                    visual = this.createBed(entity as Bed);
                 }
 
                 if (visual) {
