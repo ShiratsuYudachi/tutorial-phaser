@@ -1,8 +1,8 @@
 
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
-import { GameState, Player, Bullet, InputData, Entity } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES } from "../shared/Constants";
+import { GameState, Player, Bullet, InputData, Entity, Bed, Block } from "../shared/Schema";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, WeaponType, BLOCK_CONFIG, BlockType } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 
@@ -14,6 +14,11 @@ export class GameRoom extends Room<GameState> {
 
     agents = new Map<string, Agent>();
     bulletBodies = new Map<string, Matter.Body>();
+    bedBodies = new Map<string, Matter.Body>(); // 存储床的物理体
+    blockBodies = new Map<string, Matter.Body>(); // 存储方块的物理体
+    
+    // 队伍分配
+    teamAssignments: string[] = []; // 按加入顺序: [红队sessionId, 蓝队sessionId]
 
     onCreate(options: any) {
         this.setState(new GameState());
@@ -38,8 +43,12 @@ export class GameRoom extends Room<GameState> {
             });
             Matter.Composite.add(this.engine.world, body);
         });
+        
+        // 3. Create Beds
+        this.createBed('red', GAME_CONFIG.redBedPos.x, GAME_CONFIG.redBedPos.y);
+        this.createBed('blue', GAME_CONFIG.blueBedPos.x, GAME_CONFIG.blueBedPos.y);
 
-        // 3. Collision Events
+        // 4. Collision Events
         Matter.Events.on(this.engine, 'collisionStart', (event) => {
             event.pairs.forEach(pair => this.handleCollision(pair.bodyA, pair.bodyB));
         });
@@ -47,7 +56,7 @@ export class GameRoom extends Room<GameState> {
         // Handle Input
         this.onMessage(0, (client, input: InputData) => {
             const player = this.state.entities.get(client.sessionId) as Player;
-            if (player && player.inputQueue) {
+            if (player && player.inputQueue && !player.isDead) {
                 player.inputQueue.push(input);
             }
         });
@@ -61,6 +70,38 @@ export class GameRoom extends Room<GameState> {
             }
         });
     }
+    
+    createBed(teamId: string, x: number, y: number) {
+        const bedId = `bed_${teamId}`;
+        const bed = new Bed();
+        bed.type = 'bed';
+        bed.teamId = teamId;
+        bed.x = x;
+        bed.y = y;
+        bed.hp = GAME_CONFIG.bedMaxHP;
+        bed.maxHP = GAME_CONFIG.bedMaxHP;
+        
+        this.state.entities.set(bedId, bed);
+        
+        // 创建床的物理碰撞体
+        const body = Matter.Bodies.rectangle(x, y, 60, 40, {
+            isStatic: true,
+            label: `bed_${teamId}`,
+            collisionFilter: {
+                category: COLLISION_CATEGORIES.BED,
+                mask: COLLISION_CATEGORIES.BULLET
+            }
+        });
+        Matter.Composite.add(this.engine.world, body);
+        this.bedBodies.set(bedId, body);
+        
+        console.log(`Created ${teamId} bed at ${x}, ${y} with physics body`);
+    }
+    
+    getBed(teamId: string): Bed | undefined {
+        const bedId = `bed_${teamId}`;
+        return this.state.entities.get(bedId) as Bed;
+    }
 
     handleCollision(bodyA: Matter.Body, bodyB: Matter.Body) {
         const isBulletA = bodyA.label.startsWith('bullet_');
@@ -70,19 +111,117 @@ export class GameRoom extends Room<GameState> {
             const bulletBody = isBulletA ? bodyA : bodyB;
             const otherBody = isBulletA ? bodyB : bodyA;
 
-            const bulletId = bulletBody.label.split('_')[1];
+            const bulletId = bulletBody.label.split('_')[1].trim();
             const bullet = this.state.entities.get(bulletId) as Bullet;
             if (!bullet) return;
 
+            // 子弹击中玩家
             if (otherBody.label.startsWith('player_')) {
-                const targetSessionId = otherBody.label.split('_')[1];
-                if (bullet.ownerId === targetSessionId) return;
+                const targetSessionId = otherBody.label.split('_')[1].trim();
+                if (bullet.ownerId === targetSessionId) return; // 不能打自己
 
-                console.log(`Player ${targetSessionId} hit by ${bullet.ownerId} `);
-                this.respawnPlayer(targetSessionId);
+                const targetPlayer = this.state.entities.get(targetSessionId) as Player;
+                if (targetPlayer && !targetPlayer.isDead) {
+                    // 扣血
+                    targetPlayer.hp -= bullet.damage;
+                    console.log(`Player ${targetSessionId} hit by ${bullet.ownerId}, HP: ${targetPlayer.hp}/${targetPlayer.maxHP}`);
+                    
+                    // 检查死亡
+                    this.checkPlayerDeath(targetSessionId);
+                }
+            }
+            
+            // 子弹击中床
+            if (otherBody.label.startsWith('bed_')) {
+                const teamId = otherBody.label.split('_')[1].trim();
+                const bedId = `bed_${teamId}`;
+                const bed = this.state.entities.get(bedId) as Bed;
+                
+                if (bed && bed.hp > 0) {
+                    // 不能打自己队伍的床
+                    const shooter = this.state.entities.get(bullet.ownerId) as Player;
+                    if (shooter && shooter.teamId === teamId) return;
+                    
+                    // 扣血
+                    bed.hp -= bullet.damage;
+                    console.log(`Bed ${teamId} hit, HP: ${bed.hp}/${bed.maxHP}`);
+                    
+                    // 床被破坏
+                    if (bed.hp <= 0) {
+                        bed.hp = 0;
+                        console.log(`Bed ${teamId} DESTROYED!`);
+                        // 移除床的物理体
+                        const bedBody = this.bedBodies.get(bedId);
+                        if (bedBody) {
+                            Matter.Composite.remove(this.engine.world, bedBody);
+                            this.bedBodies.delete(bedId);
+                        }
+                    }
+                }
+            }
+            
+            // 子弹击中方块
+            if (otherBody.label.startsWith('block_')) {
+                const blockId = otherBody.label.split('_')[1].trim();
+                const block = this.state.entities.get(blockId) as Block;
+                
+                if (block && block.hp > 0) {
+                    // 不能打自己队伍的方块
+                    const shooter = this.state.entities.get(bullet.ownerId) as Player;
+                    if (shooter && shooter.teamId === block.teamId) {
+                        console.log(`Cannot attack own team's block`);
+                        return; // 不移除子弹，让它穿过
+                    }
+                    
+                    // 扣血
+                    block.hp -= bullet.damage;
+                    console.log(`Block ${blockId} (${block.teamId}) hit by ${bullet.ownerId}, HP: ${block.hp}/${block.maxHP}`);
+                    
+                    // 方块被破坏
+                    if (block.hp <= 0) {
+                        this.removeBlock(blockId);
+                    }
+                }
             }
 
             this.removeBullet(bulletId);
+        }
+    }
+    
+    checkPlayerDeath(sessionId: string) {
+        const player = this.state.entities.get(sessionId) as Player;
+        if (!player) return;
+        
+        if (player.hp <= 0 && !player.isDead) {
+            player.isDead = true;
+            console.log(`Player ${sessionId} (${player.teamId}) died!`);
+            
+            // 隐藏玩家（通过Agent）
+            const agent = this.agents.get(sessionId);
+            if (agent && agent.body) {
+                // 移动到地图外
+                Matter.Body.setPosition(agent.body, { x: -1000, y: -1000 });
+                Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
+            }
+            
+            // 开始重生倒计时
+            this.startRespawn(sessionId);
+        }
+    }
+    
+    startRespawn(sessionId: string) {
+        const player = this.state.entities.get(sessionId) as Player;
+        if (!player) return;
+        
+        const bed = this.getBed(player.teamId);
+        if (bed && bed.hp > 0) {
+            // 床还在，可以重生
+            player.respawnTime = GAME_CONFIG.respawnTime;
+            console.log(`Player ${sessionId} will respawn in ${GAME_CONFIG.respawnTime}ms`);
+        } else {
+            // 床被破坏，无法重生
+            console.log(`Player ${sessionId} cannot respawn - bed destroyed!`);
+            player.respawnTime = -1; // -1 表示无法重生
         }
     }
 
@@ -96,7 +235,7 @@ export class GameRoom extends Room<GameState> {
         // 3. Post Update (Sync)
         this.agents.forEach(agent => agent.postUpdate(deltaTime));
 
-        // Sync Bullets (Legacy/Simple way for now)
+        // 4. Sync Bullets
         this.bulletBodies.forEach((body, bulletId) => {
             const bullet = this.state.entities.get(bulletId) as Bullet;
             if (bullet) {
@@ -109,20 +248,38 @@ export class GameRoom extends Room<GameState> {
                 }
             }
         });
+        
+        // 5. Update Respawn Timers
+        this.state.entities.forEach((entity, id) => {
+            if (entity instanceof Player && entity.isDead && entity.respawnTime > 0) {
+                entity.respawnTime -= deltaTime;
+                if (entity.respawnTime <= 0) {
+                    this.respawnPlayer(id);
+                }
+            }
+        });
     }
 
-    spawnBullet(ownerId: string, position: { x: number, y: number }) {
+    spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number) {
+        const player = this.state.entities.get(ownerId) as Player;
+        if (!player) return;
+        
+        // 获取当前武器配置
+        const weaponType = player.currentWeapon as WeaponType;
+        const weaponConfig = WEAPON_CONFIG[weaponType] || WEAPON_CONFIG[WeaponType.BOW];
+        
         const bulletId = Math.random().toString(36).substr(2, 9);
         const bullet = new Bullet();
         bullet.type = 'bullet';
         bullet.x = position.x;
         bullet.y = position.y;
         bullet.ownerId = ownerId;
+        bullet.damage = weaponConfig.damage;
+        bullet.weaponType = weaponType;
 
-        // Default shooting right for now
-        const angle = 0;
-        const velocityX = Math.cos(angle) * GAME_CONFIG.bulletSpeed;
-        const velocityY = Math.sin(angle) * GAME_CONFIG.bulletSpeed;
+        // 使用瞄准角度和武器速度
+        const velocityX = Math.cos(aimAngle) * weaponConfig.bulletSpeed;
+        const velocityY = Math.sin(aimAngle) * weaponConfig.bulletSpeed;
 
         bullet.velocityX = velocityX;
         bullet.velocityY = velocityY;
@@ -130,12 +287,12 @@ export class GameRoom extends Room<GameState> {
         this.state.entities.set(bulletId, bullet);
 
         const body = Matter.Bodies.circle(position.x, position.y, GAME_CONFIG.bulletRadius, {
-            label: `bullet_${bulletId} `,
+            label: `bullet_${bulletId}`,
             isSensor: true,
             frictionAir: 0,
             collisionFilter: {
                 category: COLLISION_CATEGORIES.BULLET,
-                mask: COLLISION_CATEGORIES.WALL | COLLISION_CATEGORIES.PLAYER
+                mask: COLLISION_CATEGORIES.WALL | COLLISION_CATEGORIES.PLAYER | COLLISION_CATEGORIES.BED | COLLISION_CATEGORIES.BLOCK
             }
         });
 
@@ -152,36 +309,162 @@ export class GameRoom extends Room<GameState> {
         }
         this.state.entities.delete(bulletId);
     }
+    
+    placeBlock(playerId: string, x: number, y: number, blockType: BlockType) {
+        const player = this.state.entities.get(playerId) as Player;
+        if (!player) return;
+        
+        // 检查背包中是否有该类型方块
+        const count = player.inventory.get(blockType) || 0;
+        if (count <= 0) {
+            console.log(`Player ${playerId} has no ${blockType} blocks`);
+            return;
+        }
+        
+        // 对齐到网格
+        const gridSize = GAME_CONFIG.gridSize;
+        const gridX = Math.round(x / gridSize) * gridSize;
+        const gridY = Math.round(y / gridSize) * gridSize;
+        
+        // 检查距离
+        const distance = Math.sqrt((gridX - player.x) ** 2 + (gridY - player.y) ** 2);
+        if (distance > GAME_CONFIG.maxPlaceRange) {
+            console.log(`Block too far: ${distance} > ${GAME_CONFIG.maxPlaceRange}`);
+            return;
+        }
+        
+        // 检查位置是否已有方块（简单碰撞检测）
+        const existingBlock = Array.from(this.blockBodies.values()).find(body => {
+            const dx = Math.abs(body.position.x - gridX);
+            const dy = Math.abs(body.position.y - gridY);
+            return dx < gridSize / 2 && dy < gridSize / 2;
+        });
+        
+        if (existingBlock) {
+            console.log(`Position occupied: ${gridX}, ${gridY}`);
+            return;
+        }
+        
+        // 创建方块
+        const blockId = Math.random().toString(36).substr(2, 9);
+        const block = new Block();
+        block.type = 'block';
+        block.x = gridX;
+        block.y = gridY;
+        block.blockType = blockType;
+        block.teamId = player.teamId; // 设置方块的队伍ID
+        
+        const blockConfig = BLOCK_CONFIG[blockType];
+        block.hp = blockConfig.maxHP;
+        block.maxHP = blockConfig.maxHP;
+        
+        this.state.entities.set(blockId, block);
+        
+        // 创建物理体
+        const body = Matter.Bodies.rectangle(gridX, gridY, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, {
+            isStatic: true,
+            label: `block_${blockId}`,
+            collisionFilter: {
+                category: COLLISION_CATEGORIES.BLOCK,
+                mask: COLLISION_CATEGORIES.PLAYER | COLLISION_CATEGORIES.BULLET
+            }
+        });
+        
+        Matter.Composite.add(this.engine.world, body);
+        this.blockBodies.set(blockId, body);
+        
+        // 消耗方块
+        player.inventory.set(blockType, count - 1);
+        
+        console.log(`Placed ${blockType} block at ${gridX}, ${gridY}. Remaining: ${count - 1}`);
+    }
+    
+    removeBlock(blockId: string) {
+        const block = this.state.entities.get(blockId) as Block;
+        if (!block) return;
+        
+        console.log(`Block ${blockId} destroyed`);
+        
+        // 移除物理体
+        const body = this.blockBodies.get(blockId);
+        if (body) {
+            Matter.Composite.remove(this.engine.world, body);
+            this.blockBodies.delete(blockId);
+        }
+        
+        // 移除实体
+        this.state.entities.delete(blockId);
+    }
 
     respawnPlayer(sessionId: string) {
+        const player = this.state.entities.get(sessionId) as Player;
+        if (!player) return;
+        
+        const bed = this.getBed(player.teamId);
+        if (!bed || bed.hp <= 0) {
+            console.log(`Cannot respawn ${sessionId} - bed destroyed`);
+            return;
+        }
+        
+        // 重生
+        player.isDead = false;
+        player.hp = player.maxHP;
+        player.respawnTime = 0;
+        
         const agent = this.agents.get(sessionId);
         if (agent && agent.body) {
-            const x = Math.random() * this.state.mapWidth;
-            const y = Math.random() * this.state.mapHeight;
-
-            Matter.Body.setPosition(agent.body, { x, y });
+            // 根据队伍重生在对应位置
+            const spawnPos = player.teamId === 'red' ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
+            Matter.Body.setPosition(agent.body, { x: spawnPos.x, y: spawnPos.y });
             Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
         }
+        
+        console.log(`Player ${sessionId} (${player.teamId}) respawned at team spawn`);
     }
 
     onJoin(client: Client) {
         console.log(client.sessionId, "joined!");
+        
+        // 分配队伍：第一个玩家=红队，第二个玩家=蓝队
+        const teamId = this.teamAssignments.length === 0 ? 'red' : 'blue';
+        this.teamAssignments.push(client.sessionId);
+        
         const player = new Player();
         player.type = 'player';
+        player.teamId = teamId;
+        player.hp = GAME_CONFIG.playerMaxHP;
+        player.maxHP = GAME_CONFIG.playerMaxHP;
+        player.isDead = false;
+        player.respawnTime = 0;
+        
+        // 初始化背包
+        player.inventory.set(BlockType.WOOD, GAME_CONFIG.initialBlocks[BlockType.WOOD]);
+        player.inventory.set(BlockType.STONE, GAME_CONFIG.initialBlocks[BlockType.STONE]);
+        player.inventory.set(BlockType.DIAMOND, GAME_CONFIG.initialBlocks[BlockType.DIAMOND]);
+        player.selectedBlockType = BlockType.WOOD;
+        player.inBuildMode = false;
 
-        const x = Math.random() * this.state.mapWidth;
-        const y = Math.random() * this.state.mapHeight;
-
-        player.x = x;
-        player.y = y;
-        console.log(`Spawning player ${client.sessionId} at ${x}, ${y}`);
+        // 根据队伍设置出生点
+        const spawnPos = teamId === 'red' ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
+        player.x = spawnPos.x;
+        player.y = spawnPos.y;
+        
+        console.log(`Spawning player ${client.sessionId} (${teamId} team) at ${spawnPos.x}, ${spawnPos.y}`);
 
         this.state.entities.set(client.sessionId, player);
 
         // Create Agent
-        const agent = new PlayerAgent(client.sessionId, this.engine.world, player, (ownerId, pos) => {
-            this.spawnBullet(ownerId, pos);
-        });
+        const agent = new PlayerAgent(
+            client.sessionId, 
+            this.engine.world, 
+            player, 
+            (ownerId, pos, aimAngle) => {
+                this.spawnBullet(ownerId, pos, aimAngle);
+            },
+            (playerId, x, y, blockType) => {
+                this.placeBlock(playerId, x, y, blockType);
+            }
+        );
         this.agents.set(client.sessionId, agent);
     }
 

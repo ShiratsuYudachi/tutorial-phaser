@@ -1,9 +1,7 @@
 import { Behavior } from "./Behavior";
 import { Player, InputData } from "../shared/Schema";
 import { applyInput } from "../shared/GameLogic";
-import { GAME_CONFIG, COLLISION_CATEGORIES } from "../shared/Constants";
-import Matter from "matter-js";
-import { Bullet } from "../shared/Schema";
+import { WEAPON_CONFIG, WeaponType, BlockType } from "../shared/Constants";
 
 export class PlayerControlBehavior extends Behavior<Player> {
     update(deltaTime: number) {
@@ -15,47 +13,61 @@ export class PlayerControlBehavior extends Behavior<Player> {
             applyInput(this.agent.body, input);
             player.tick = input.tick;
 
-            if (input.shoot) {
+            // 处理建造模式切换
+            if (input.buildMode !== undefined) {
+                player.inBuildMode = input.buildMode;
+            }
+
+            // 处理方块类型切换
+            if (input.switchBlockType) {
+                const blocks = [BlockType.WOOD, BlockType.STONE, BlockType.DIAMOND];
+                if (input.switchBlockType >= 1 && input.switchBlockType <= 3) {
+                    player.selectedBlockType = blocks[input.switchBlockType - 1];
+                }
+            }
+
+            // 处理方块放置
+            if (input.placeBlock && player.inBuildMode) {
+                if (this.onPlaceBlock) {
+                    const sessionId = (this.agent as any).sessionId;
+                    this.onPlaceBlock(
+                        sessionId, 
+                        input.placeBlock.x, 
+                        input.placeBlock.y, 
+                        input.placeBlock.blockType as BlockType
+                    );
+                }
+            }
+
+            // 处理武器切换
+            if (input.switchWeapon) {
+                const weapons = [WeaponType.BOW, WeaponType.FIREBALL, WeaponType.DART];
+                if (input.switchWeapon >= 1 && input.switchWeapon <= 3) {
+                    player.currentWeapon = weapons[input.switchWeapon - 1];
+                }
+            }
+
+            // 只有在非建造模式下才能射击
+            if (input.shoot && !player.inBuildMode) {
                 const now = Date.now();
-                if (now - player.lastShootTime > GAME_CONFIG.fireRate) {
-                    this.spawnBullet(player, this.agent.body.position);
+                const weaponConfig = WEAPON_CONFIG[player.currentWeapon as WeaponType];
+                const fireRate = weaponConfig ? weaponConfig.fireRate : 500;
+                
+                if (now - player.lastShootTime > fireRate) {
+                    this.spawnBullet(player, this.agent.body.position, input.aimAngle);
                     player.lastShootTime = now;
                 }
             }
         }
     }
 
-    spawnBullet(player: Player, position: { x: number, y: number }) {
-        // We need access to the game state to add the bullet
-        // Since Agent doesn't hold the full GameState, we might need a way to access it.
-        // For now, let's assume we can emit an event or call a method on the Room/World manager.
-        // BUT, to keep it simple for this refactor, we can pass a callback or reference to the Agent.
-
-        // However, a better pattern is to have a BulletManager or similar.
-        // For this MVP refactor, let's assume the Agent has a reference to the 'Context' or we pass it in.
-
-        // Wait, the user said: "PlayerControlBehavior: 读取 schema.inputQueue，计算向量，应用 Matter.Body.setVelocity"
-        // The user didn't explicitly say it handles bullet spawning, but the original code did.
-        // In the original GameRoom.ts: spawnBullet adds to state.bullets and creates a body.
-
-        // Let's look at how we can handle this.
-        // Option 1: Pass a 'spawnBullet' callback to the Behavior.
-        // Option 2: Emit an event.
-
-        // Let's try to keep it self-contained if possible, or use a callback.
-        // Since we haven't defined a global context, I'll add a callback property to this behavior 
-        // or just leave a TODO and handle movement first?
-
-        // Actually, the user's prompt said: "PlayerControlBehavior: 读取 schema.inputQueue，计算向量，应用 Matter.Body.setVelocity"
-        // It didn't mention shooting. But shooting is part of the input.
-
-        // Let's implement a callback for spawning bullets so we don't couple this behavior to the Room directly.
+    spawnBullet(player: Player, position: { x: number, y: number }, aimAngle: number) {
         if (this.onShoot) {
-            // We know this behavior is attached to a PlayerAgent which has a sessionId
             const sessionId = (this.agent as any).sessionId;
-            this.onShoot(sessionId, position);
+            this.onShoot(sessionId, position, aimAngle);
         }
     }
 
-    onShoot: (ownerId: string, position: { x: number, y: number }) => void;
+    onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number) => void;
+    onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockType) => void;
 }
