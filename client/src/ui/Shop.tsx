@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Icon } from "@iconify/react";
 import { gameStore, useCurrentPlayer } from "./GameStore";
 import { SHOP_TRADES, ITEM_DEFINITIONS, ItemType } from "../../../server/src/shared/Constants";
@@ -15,6 +15,20 @@ export const Shop: React.FC = () => {
     const handleClose = () => {
         gameStore.closeShop();
     };
+
+    // ESC key to close shop
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                handleClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
 
     // Calculate how much of each item the player has
     const getItemCount = (itemType: ItemType): number => {
