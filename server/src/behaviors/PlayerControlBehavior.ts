@@ -6,7 +6,7 @@ import { WEAPON_CONFIG, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWea
 export class PlayerControlBehavior extends Behavior<Player> {
     update(deltaTime: number) {
         const player = this.agent.schema;
-        if (!player) return;
+        if (!player || !player.isActive) return;
 
         let input: InputData;
         while (input = player.inputQueue.shift()) {
