@@ -31,6 +31,9 @@ export class GameScene extends Phaser.Scene {
 
     // Drop Item Key (Q)
     qKey: Phaser.Input.Keyboard.Key;
+    
+    // Switch Character Key (Tab)
+    tabKey: Phaser.Input.Keyboard.Key;
 
     // Dropped Item Renderer
     droppedItemRenderer: DroppedItemRenderer;
@@ -160,6 +163,10 @@ export class GameScene extends Phaser.Scene {
         // Drop item key (Q)
         this.qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
 
+        // Switch Character Key (Tab)
+        this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
+        this.input.keyboard.addCapture('TAB'); // Prevent browser default
+
         this.mousePointer = this.input.activePointer;
         
         // Initialize dropped item renderer
@@ -167,6 +174,9 @@ export class GameScene extends Phaser.Scene {
         
         await this.connect();
         this.cameras.main.setBounds(0, 0, GAME_CONFIG.mapWidth, GAME_CONFIG.mapHeight);
+        this.cameras.main.setZoom(2);
+        // Disable built-in follow lerp for custom smooth transition
+        // this.cameras.main.setLerp(0, 0);
         
         // UI Initialization
         // this.createInventoryUI(); // Removed
@@ -266,7 +276,8 @@ export class GameScene extends Phaser.Scene {
                         visual.setData('serverY', entity.y);
                         
                         if ((entity instanceof Player || entity.type === 'player') && visual instanceof Phaser.GameObjects.Container) {
-                            this.updateHealthBar(visual, entity as Player);
+                            const p = entity as Player;
+                            this.updatePlayerVisuals(visual, p, id);
                         }
                         
                         if ((entity instanceof Bed || entity.type === 'bed') && visual instanceof Phaser.GameObjects.Container) {
@@ -326,12 +337,47 @@ export class GameScene extends Phaser.Scene {
         container.add(respawnText);
         container.setData('respawnText', respawnText);
 
-        if (id === this.room.sessionId) {
+        // Selection Highlight (Yellow Ring)
+        const highlight = this.add.graphics();
+        highlight.lineStyle(2, 0xffff00, 1);
+        highlight.strokeCircle(0, 0, 25);
+        highlight.setVisible(false);
+        container.add(highlight);
+        container.setData('highlight', highlight);
+
+        if (player.ownerSessionId === this.room.sessionId && player.isActive) {
             this.currentPlayerId = id;
-            this.cameras.main.startFollow(container);
+            this.cameras.main.startFollow(container, false, 0.1, 0.1);
+            highlight.setVisible(true);
         }
 
         return container;
+    }
+    
+    updatePlayerVisuals(container: Phaser.GameObjects.Container, player: Player, id: string) {
+        this.updateHealthBar(container, player);
+        
+        // Update Highlight
+        const highlight = container.getData('highlight') as Phaser.GameObjects.Graphics;
+        if (highlight) {
+            const isMyActiveChar = player.ownerSessionId === this.room.sessionId && player.isActive;
+            highlight.setVisible(isMyActiveChar);
+        }
+
+        // Camera Follow Logic
+        if (player.ownerSessionId === this.room.sessionId && player.isActive) {
+            if (this.currentPlayerId !== id) {
+                this.currentPlayerId = id;
+                
+                // Smooth transition
+                this.cameras.main.stopFollow();
+                this.cameras.main.pan(container.x, container.y, 500, 'Power2', true, (camera, progress) => {
+                    if (progress === 1) {
+                        this.cameras.main.startFollow(container, false, 0.1, 0.1);
+                    }
+                });
+            }
+        }
     }
     
     updateHealthBar(container: Phaser.GameObjects.Container, entity: Player | Bed) {
@@ -573,6 +619,11 @@ export class GameScene extends Phaser.Scene {
         
         // Drop Item (Q key)
         this.inputPayload.dropItem = Phaser.Input.Keyboard.JustDown(this.qKey);
+
+        // Switch Character (Tab key)
+        if (Phaser.Input.Keyboard.JustDown(this.tabKey)) {
+            this.room.send("switch_character");
+        }
         
         // Action Inputs
         const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);

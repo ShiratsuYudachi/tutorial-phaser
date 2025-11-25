@@ -54,15 +54,34 @@ export class GameRoom extends Room<GameState> {
 
         // Handle Input
         this.onMessage(0, (client, input: InputData) => {
-            const player = this.state.entities.get(client.sessionId) as Player;
+            const activeCharacterId = this.getActiveCharacterId(client.sessionId);
+            if (!activeCharacterId) return;
+
+            const player = this.state.entities.get(activeCharacterId) as Player;
             if (player && player.inputQueue && !player.isDead) {
                 player.inputQueue.push(input);
             }
         });
 
+        this.onMessage("switch_character", (client) => {
+            const char1Id = `${client.sessionId}_1`;
+            const char2Id = `${client.sessionId}_2`;
+            
+            const char1 = this.state.entities.get(char1Id) as Player;
+            const char2 = this.state.entities.get(char2Id) as Player;
+            
+            if (char1 && char2) {
+                char1.isActive = !char1.isActive;
+                char2.isActive = !char2.isActive;
+                console.log(`Player ${client.sessionId} switched character. Active: ${char1.isActive ? char1Id : char2Id}`);
+            }
+        });
+
         // Inventory Actions
         this.onMessage("inventory_action", (client, data: any) => {
-            const player = this.state.entities.get(client.sessionId) as Player;
+            const activeCharacterId = this.getActiveCharacterId(client.sessionId);
+            if (!activeCharacterId) return;
+            const player = this.state.entities.get(activeCharacterId) as Player;
             if (!player) return;
 
             if (data.type === "select") {
@@ -100,15 +119,19 @@ export class GameRoom extends Room<GameState> {
 
         // Drop Item (from UI drag-and-drop)
         this.onMessage("drop_item", (client, data: { slotIndex: number }) => {
-            const player = this.state.entities.get(client.sessionId) as Player;
+            const activeCharacterId = this.getActiveCharacterId(client.sessionId);
+            if (!activeCharacterId) return;
+            const player = this.state.entities.get(activeCharacterId) as Player;
             if (!player) return;
 
-            this.dropItemFromSlot(client.sessionId, player, data.slotIndex);
+            this.dropItemFromSlot(activeCharacterId, player, data.slotIndex);
         });
 
         // Shop Trade
         this.onMessage("shop_trade", (client, data: { tradeId: string }) => {
-            const player = this.state.entities.get(client.sessionId) as Player;
+            const activeCharacterId = this.getActiveCharacterId(client.sessionId);
+            if (!activeCharacterId) return;
+            const player = this.state.entities.get(activeCharacterId) as Player;
             if (!player) {
                 console.warn(`Shop trade: Player ${client.sessionId} not found`);
                 return;
@@ -262,17 +285,30 @@ export class GameRoom extends Room<GameState> {
 
             // 子弹击中玩家
             if (otherBody.label.startsWith('player_')) {
-                const targetSessionId = otherBody.label.split('_')[1].trim();
-                if (bullet.ownerId === targetSessionId) return; // 不能打自己
+                // Parse sessionId correctly (handle underscores in sessionId or suffix)
+                // Format: player_sessionId_index
+                const parts = otherBody.label.split('_');
+                // parts[0] is 'player'
+                // parts[last] is index
+                // parts[1...last-1] is sessionId (joined by _)
+                
+                // Actually, we use the full characterId as the key in entities map
+                // characterId = sessionId_index
+                // label = player_characterId
+                
+                // So we just need to remove 'player_' prefix
+                const targetCharacterId = otherBody.label.substring(7); // 'player_'.length = 7
 
-                const targetPlayer = this.state.entities.get(targetSessionId) as Player;
+                if (bullet.ownerId === targetCharacterId) return; // 不能打自己
+
+                const targetPlayer = this.state.entities.get(targetCharacterId) as Player;
                 if (targetPlayer && !targetPlayer.isDead) {
                     // 扣血
                     targetPlayer.hp -= bullet.damage;
-                    console.log(`Player ${targetSessionId} hit by ${bullet.ownerId}, HP: ${targetPlayer.hp}/${targetPlayer.maxHP}`);
+                    console.log(`Player ${targetCharacterId} hit by ${bullet.ownerId}, HP: ${targetPlayer.hp}/${targetPlayer.maxHP}`);
                     
                     // 检查死亡
-                    this.checkPlayerDeath(targetSessionId);
+                    this.checkPlayerDeath(targetCharacterId);
                 }
             }
             
@@ -573,6 +609,12 @@ export class GameRoom extends Room<GameState> {
         const teamId = this.teamAssignments.length === 0 ? TeamType.RED : TeamType.BLUE;
         this.teamAssignments.push(client.sessionId);
         
+        this.createCharacter(client, teamId, 1, true);
+        this.createCharacter(client, teamId, 2, false);
+    }
+
+    createCharacter(client: Client, teamId: string, index: number, isActive: boolean) {
+        const characterId = `${client.sessionId}_${index}`;
         const player = new Player();
         player.type = EntityType.PLAYER;
         player.teamId = teamId;
@@ -580,6 +622,8 @@ export class GameRoom extends Room<GameState> {
         player.maxHP = GAME_CONFIG.playerMaxHP;
         player.isDead = false;
         player.respawnTime = 0;
+        player.ownerSessionId = client.sessionId;
+        player.isActive = isActive;
         
         // 初始化背包 (HOTBAR)
         // 1: Bow (Weapon)
@@ -615,16 +659,16 @@ export class GameRoom extends Room<GameState> {
 
         // 根据队伍设置出生点
         const spawnPos = teamId === TeamType.RED ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
-        player.x = spawnPos.x;
+        player.x = spawnPos.x + (index - 1) * 50;
         player.y = spawnPos.y;
         
-        console.log(`Spawning player ${client.sessionId} (${teamId} team) at ${spawnPos.x}, ${spawnPos.y}`);
+        console.log(`Spawning character ${characterId} (${teamId} team) at ${player.x}, ${player.y}`);
 
-        this.state.entities.set(client.sessionId, player);
+        this.state.entities.set(characterId, player);
 
         // Create Agent
         const agent = new PlayerAgent(
-            client.sessionId, 
+            characterId, 
             this.engine.world, 
             player, 
             (ownerId, pos, aimAngle, weaponType) => {
@@ -640,17 +684,23 @@ export class GameRoom extends Room<GameState> {
                 }
             }
         );
-        this.agents.set(client.sessionId, agent);
+        this.agents.set(characterId, agent);
     }
 
     onLeave(client: Client) {
         console.log(client.sessionId, "left!");
-        const agent = this.agents.get(client.sessionId);
-        if (agent) {
-            agent.destroy();
-            this.agents.delete(client.sessionId);
-        }
-        this.state.entities.delete(client.sessionId);
+        
+        const char1Id = `${client.sessionId}_1`;
+        const char2Id = `${client.sessionId}_2`;
+
+        [char1Id, char2Id].forEach(id => {
+            const agent = this.agents.get(id);
+            if (agent) {
+                agent.destroy();
+                this.agents.delete(id);
+            }
+            this.state.entities.delete(id);
+        });
     }
 
     // ============ Dropped Item System ============
@@ -964,5 +1014,15 @@ export class GameRoom extends Room<GameState> {
         });
 
         return count;
+    }
+
+    getActiveCharacterId(sessionId: string): string | undefined {
+        // Iterate entities to find the one owned by sessionId and isActive
+        for (const [id, entity] of this.state.entities) {
+            if (entity instanceof Player && entity.ownerSessionId === sessionId && entity.isActive) {
+                return id;
+            }
+        }
+        return undefined;
     }
 }

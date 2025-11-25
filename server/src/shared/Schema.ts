@@ -40,6 +40,9 @@ export class Player extends HealthEntity {
     @type("boolean") isDead: boolean = false;
     @type("number") respawnTime: number = 0; // Respawn cooldown
     
+    @type("string") ownerSessionId: string;
+    @type("boolean") isActive: boolean = false;
+    
     // New Inventory System
     @type([ InventoryItem ]) inventory = new ArraySchema<InventoryItem>();
     @type("number") selectedSlot: number = 0;

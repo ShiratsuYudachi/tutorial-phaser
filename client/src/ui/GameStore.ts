@@ -33,7 +33,7 @@ class GameStore {
         this.connectPromise = (async () => {
             try {
                 this.room = await this.client.joinOrCreate<GameState>("game_room", {});
-                this.currentPlayerId = this.room.sessionId;
+                // this.currentPlayerId = this.room.sessionId; // Removed: determined by active character
                 console.log("GameStore connected to room:", this.room.name);
                 
                 // Wait for state to be ready
@@ -85,41 +85,63 @@ class GameStore {
             this.notify();
         });
 
-        // Listen for player changes specifically
+        // Helper to setup player listeners
+        const setupPlayerListeners = (player: any, id: string) => {
+             // Listen to property changes
+             if (player.onChange) {
+                player.onChange(() => {
+                    if (player.isActive && this.currentPlayerId !== id) {
+                        this.currentPlayerId = id;
+                        this.notify();
+                    }
+                    console.log("GameStore: player changed");
+                    this.notify();
+                });
+             }
+
+             // Listen to inventory changes
+             if (player.inventory) {
+                 const inventory = player.inventory as any;
+                 
+                 if (inventory.onAdd) inventory.onAdd(() => {
+                     console.log("GameStore: inventory item added");
+                     this.notify();
+                 });
+                 if (inventory.onRemove) inventory.onRemove(() => {
+                     console.log("GameStore: inventory item removed");
+                     this.notify();
+                 });
+                 if (inventory.onChange) inventory.onChange(() => {
+                     console.log("GameStore: inventory changed");
+                     this.notify();
+                 });
+             }
+        };
+
+        // 1. Check existing entities for active player
+        this.room.state.entities.forEach((entity: any, id: string) => {
+            if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
+                setupPlayerListeners(entity, id);
+                if (entity.isActive) {
+                    this.currentPlayerId = id;
+                    console.log("GameStore: Found initial active player", id);
+                    this.notify();
+                }
+            }
+        });
+
+        // 2. Listen for new entities
         const entities = this.room.state.entities as any;
         
         if (entities && entities.onAdd) {
-            entities.onAdd((entity: any, sessionId: string) => {
-                console.log("GameStore: entity added", sessionId);
-                if (sessionId === this.currentPlayerId) {
-                     this.notify();
-    
-                     const player = entity;
-                     
-                     // Listen to property changes
-                     if (player.onChange) {
-                        player.onChange(() => {
-                            console.log("GameStore: player changed");
-                            this.notify();
-                        });
-                     }
-    
-                     // Listen to inventory changes
-                     if (player.inventory) {
-                         const inventory = player.inventory as any;
-                         
-                         if (inventory.onAdd) inventory.onAdd(() => {
-                             console.log("GameStore: inventory item added");
-                             this.notify();
-                         });
-                         if (inventory.onRemove) inventory.onRemove(() => {
-                             console.log("GameStore: inventory item removed");
-                             this.notify();
-                         });
-                         if (inventory.onChange) inventory.onChange(() => {
-                             console.log("GameStore: inventory changed");
-                             this.notify();
-                         });
+            entities.onAdd((entity: any, id: string) => {
+                console.log("GameStore: entity added", id);
+                
+                if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
+                     setupPlayerListeners(entity, id);
+                     if (entity.isActive) {
+                         this.currentPlayerId = id;
+                         this.notify();
                      }
                 }
             });
