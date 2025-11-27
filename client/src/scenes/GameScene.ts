@@ -35,6 +35,9 @@ export class GameScene extends Phaser.Scene {
     // Switch Character Key (Tab)
     tabKey: Phaser.Input.Keyboard.Key;
 
+    // Chat Key (T)
+    tKey: Phaser.Input.Keyboard.Key;
+
     // Dropped Item Renderer
     droppedItemRenderer: DroppedItemRenderer;
 
@@ -176,6 +179,10 @@ export class GameScene extends Phaser.Scene {
         // Switch Character Key (Tab)
         this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
         this.input.keyboard.addCapture('TAB'); // Prevent browser default
+
+        // Chat Key (T)
+        this.tKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
+        // We don't capture T so it can be typed in chat, but we need to handle the open trigger carefully
 
         this.mousePointer = this.input.activePointer;
         
@@ -619,7 +626,6 @@ export class GameScene extends Phaser.Scene {
         // Check for game restart (from ended to building)
         if (this.lastGamePhase === 'ended' && this.room.state.gamePhase === 'building') {
             console.log('Game restarted! Hiding end game screen.');
-            const { gameStore } = require('../ui/GameStore');
             gameStore.setGameEnded(false);
             gameStore.clearKillFeed();
         }
@@ -763,8 +769,17 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         
-        // Freeze inputs if game ended
-        if (this.room.state.isFrozen) {
+        // Open Chat (T key)
+        if (Phaser.Input.Keyboard.JustDown(this.tKey)) {
+            if (!gameStore.isChatOpen) {
+                gameStore.toggleChat(true);
+                // Clear the input buffer to prevent 't' from being typed immediately? 
+                // React will handle focus.
+            }
+        }
+        
+        // Freeze inputs if game ended or chat is open
+        if (this.room.state.isFrozen || gameStore.isChatOpen) {
             return;
         }
         
@@ -926,14 +941,14 @@ export class GameScene extends Phaser.Scene {
         const totalSeconds = Math.ceil(totalRemaining / 1000);
         const totalMins = Math.floor(totalSeconds / 60);
         const totalSecs = totalSeconds % 60;
-        const totalTimeStr = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+        const totalTimeStr = `${totalMins}:${totalSecs < 10 ? '0' + totalSecs : totalSecs}`;
         
         // Phase Timer
         const phaseRemaining = Math.max(0, state.phaseEndTime - currentTime);
         const phaseSeconds = Math.ceil(phaseRemaining / 1000);
         const phaseMins = Math.floor(phaseSeconds / 60);
         const phaseSecs = phaseSeconds % 60;
-        const phaseTimeStr = `${phaseMins}:${phaseSecs.toString().padStart(2, '0')}`;
+        const phaseTimeStr = `${phaseMins}:${phaseSecs < 10 ? '0' + phaseSecs : phaseSecs}`;
         
         // Phase Name and Color
         let phaseName = '🏗️ BUILDING PHASE';
@@ -959,7 +974,6 @@ export class GameScene extends Phaser.Scene {
         }
         
         // Update React UI via GameStore
-        const { gameStore } = require('../ui/GameStore');
         gameStore.updateTimer({
             totalTime: totalTimeStr,
             phaseTime: phaseTimeStr,
@@ -1016,9 +1030,9 @@ export class GameScene extends Phaser.Scene {
             this.lastKillFeedLength = killFeed.length;
             
             // Get the latest message and add to GameStore
+            // Get the latest message and add to GameStore
             if (killFeed.length > 0) {
                 const latestMessage = killFeed[killFeed.length - 1];
-                const { gameStore } = require('../ui/GameStore');
                 gameStore.addKillFeedMessage(latestMessage);
             }
         }
@@ -1046,7 +1060,7 @@ export class GameScene extends Phaser.Scene {
         });
         
         // Send data to React UI via GameStore
-        const { gameStore } = require('../ui/GameStore');
+        // Send data to React UI via GameStore
         gameStore.setGameEnded(true, winner, playerStats);
     }
 

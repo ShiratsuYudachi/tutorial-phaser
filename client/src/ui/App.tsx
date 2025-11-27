@@ -3,6 +3,8 @@ import { Icon } from '@iconify/react';
 import { Inventory } from './Inventory';
 import { Shop } from './Shop';
 import { gameStore, useShopState, useGameTimer, useKillFeed, useGameEnded, useGameEndData, useRematchState, useCurrentPlayer } from './GameStore';
+import { ChatBox } from './ChatBox';
+import { NotificationToast } from './NotificationToast';
 
 const EndGameScreen: React.FC = () => {
     const { winner, playerStats } = useGameEndData();
@@ -427,6 +429,12 @@ export function App() {
 
             {/* End Game Screen */}
             {isGameEnded && <EndGameScreen />}
+
+            {/* Chat Box */}
+            <ChatBox />
+
+            {/* Notification Toast */}
+            <NotificationToast />
 
             {/* CSS for fade-out animation */}
             <style>{`

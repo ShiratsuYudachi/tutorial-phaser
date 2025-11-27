@@ -54,6 +54,9 @@ export class Player extends HealthEntity {
     
     // Player Info
     @type("string") username: string = "";
+    
+    // Cheat Mode
+    @type("number") damageMultiplier: number = 1;
 
     inputQueue: InputData[] = [];
 }

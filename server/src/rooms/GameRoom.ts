@@ -85,6 +85,103 @@ export class GameRoom extends Room<GameState> {
             }
         });
 
+        // Chat System
+        this.onMessage("chat_message", (client, data: { text: string }) => {
+            const activeCharacterId = this.getActiveCharacterId(client.sessionId);
+            if (!activeCharacterId) return;
+            
+            const player = this.state.entities.get(activeCharacterId) as Player;
+            if (!player) return;
+
+            const text = data.text.trim();
+            if (text.length === 0) return;
+
+            // Command Handling
+            if (text.startsWith('/')) {
+                const args = text.slice(1).split(' ');
+                const command = args[0].toLowerCase();
+
+                if (command === 'cheat') {
+                    // Enable cheat mode for both characters of this player
+                    const char1Id = `${client.sessionId}_1`;
+                    const char2Id = `${client.sessionId}_2`;
+                    
+                    [char1Id, char2Id].forEach(id => {
+                        const char = this.state.entities.get(id) as Player;
+                        if (char) {
+                            char.damageMultiplier = 100; // 100x damage
+                            
+                            // Give unlimited money (Gold and Diamond)
+                            // Find existing slots or add new ones
+                            const giveItem = (itemType: string, amount: number) => {
+                                let found = false;
+                                for (const item of char.inventory) {
+                                    if (item.itemId === itemType) {
+                                        item.count = amount;
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if (!found) {
+                                    // Find empty slot
+                                    for (const item of char.inventory) {
+                                        if (item.itemId === ItemType.EMPTY) {
+                                            item.itemId = itemType;
+                                            item.count = amount;
+                                            break;
+                                        }
+                                    }
+                                }
+                            };
+                            
+                            giveItem(ItemType.GOLD_INGOT, 9999);
+                            giveItem(ItemType.DIAMOND, 9999);
+                            giveItem(ItemType.FIREBALL, 9999); // Unlimited ammo too
+                        }
+                    });
+                    
+                    // Send private confirmation
+                    client.send("chat_message", {
+                        sender: "System",
+                        text: "Cheat mode enabled! (100x Damage, Unlimited Resources)",
+                        teamId: "system"
+                    });
+
+                    // Broadcast notification to teammates
+                    this.clients.forEach(otherClient => {
+                        const otherActiveId = this.getActiveCharacterId(otherClient.sessionId);
+                        if (otherActiveId) {
+                            const otherPlayer = this.state.entities.get(otherActiveId) as Player;
+                            // Send to teammates (including self)
+                            if (otherPlayer && otherPlayer.teamId === player.teamId) {
+                                otherClient.send("notification", {
+                                    text: `${player.username || "Player"} enabled CHEAT MODE!`,
+                                    color: "#ff0000"
+                                });
+                            }
+                        }
+                    });
+                }
+                return;
+            }
+
+            // Team Chat Logic
+            // Broadcast only to teammates
+            this.clients.forEach(otherClient => {
+                const otherActiveId = this.getActiveCharacterId(otherClient.sessionId);
+                if (otherActiveId) {
+                    const otherPlayer = this.state.entities.get(otherActiveId) as Player;
+                    if (otherPlayer && otherPlayer.teamId === player.teamId) {
+                        otherClient.send("chat_message", {
+                            sender: player.username || "Player",
+                            text: text,
+                            teamId: player.teamId
+                        });
+                    }
+                }
+            });
+        });
+
         // Inventory Actions
         this.onMessage("inventory_action", (client, data: any) => {
             const activeCharacterId = this.getActiveCharacterId(client.sessionId);
@@ -525,7 +622,10 @@ export class GameRoom extends Room<GameState> {
         bullet.x = position.x;
         bullet.y = position.y;
         bullet.ownerId = ownerId;
-        bullet.damage = weaponConfig.damage;
+        
+        // Apply damage multiplier from player
+        bullet.damage = weaponConfig.damage * (player.damageMultiplier || 1);
+        
         bullet.weaponType = weaponType;
 
         // 使用瞄准角度和武器速度
