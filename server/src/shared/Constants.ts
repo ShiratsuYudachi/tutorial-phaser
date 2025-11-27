@@ -214,7 +214,19 @@ export const GAME_CONFIG = {
         [ItemType.WOOD]: 20,
         [ItemType.STONE]: 10,
         [ItemType.DIAMOND]: 5
-    }
+    },
+    
+    // 游戏阶段配置（4分钟总时长）
+    buildingPhaseDuration: 30000,    // 30秒建造期 (ms)
+    combatPhaseDuration: 180000,     // 3分钟战斗期 (ms)
+    deathmatchPhaseDuration: 30000,  // 30秒死斗期 (ms)
+    totalGameDuration: 240000,       // 4分钟总时长 (ms)
+    
+    // 击退效果配置
+    knockbackForce: 15,              // 击退力度
+    
+    // 建造期限制
+    buildingPhaseRadius: 200,        // 建造期玩家只能在床附近200px范围内活动
 };
 
 // Matter.js 碰撞位掩码 (Bit Mask)

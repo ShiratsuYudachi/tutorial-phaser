@@ -1,10 +1,18 @@
 import React, { useEffect } from "react";
 import { Icon } from "@iconify/react";
-import { gameStore, useCurrentPlayer } from "./GameStore";
+import { gameStore, useCurrentPlayer, useGameEnded } from "./GameStore";
 import { SHOP_TRADES, ITEM_DEFINITIONS, ItemType } from "../../../server/src/shared/Constants";
 
 export const Shop: React.FC = () => {
     const player = useCurrentPlayer();
+    const isGameEnded = useGameEnded();
+
+    // Close shop if game ends
+    useEffect(() => {
+        if (isGameEnded) {
+            gameStore.closeShop();
+        }
+    }, [isGameEnded]);
 
     if (!player) return null;
 

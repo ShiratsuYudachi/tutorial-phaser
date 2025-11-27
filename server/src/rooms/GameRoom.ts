@@ -4,6 +4,7 @@ import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem
 import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
+import { AuthService } from "../services/AuthService";
 
 export class GameRoom extends Room<GameState> {
     fixedTimeStep = 1000 / 60;
@@ -23,6 +24,13 @@ export class GameRoom extends Room<GameState> {
         this.setState(new GameState());
         this.state.mapWidth = GAME_CONFIG.mapWidth;
         this.state.mapHeight = GAME_CONFIG.mapHeight;
+        
+        // 初始化游戏阶段
+        this.state.gamePhase = "building";
+        this.state.gameStartTime = Date.now();
+        this.state.phaseEndTime = Date.now() + GAME_CONFIG.buildingPhaseDuration;
+        this.state.winner = "";
+        this.state.isFrozen = false;
 
         // 1. Initialize Physics
         this.engine = Matter.Engine.create();
@@ -216,6 +224,33 @@ export class GameRoom extends Room<GameState> {
             console.log(`Shop trade complete: ${trade.name}`);
         });
 
+        // Rematch System
+        this.onMessage("ready_for_rematch", (client) => {
+            console.log('===== ready_for_rematch received =====');
+            console.log('  Client sessionId:', client.sessionId);
+            console.log('  Current gamePhase:', this.state.gamePhase);
+            console.log('  Current rematchReady:', Array.from(this.state.rematchReady.entries()));
+            
+            if (this.state.gamePhase !== 'ended') {
+                console.log(`  ERROR: Game not ended, ignoring ready from ${client.sessionId}`);
+                return;
+            }
+
+            // Mark player as ready
+            this.state.rematchReady.set(client.sessionId, true);
+            console.log(`  SUCCESS: ${client.sessionId} marked as ready`);
+            console.log('  Updated rematchReady:', Array.from(this.state.rematchReady.entries()));
+
+            // Check if all players are ready
+            const allReady = this.checkAllPlayersReady();
+            console.log('  All ready?', allReady);
+            
+            if (allReady) {
+                console.log('  Starting countdown from 3...');
+                this.state.rematchCountdown = 3;
+            }
+        });
+
         // Create resource generators for testing
         this.createResourceGenerator('gold_generator', 400, 150);
         this.createResourceGenerator('resource_generator', 400, 450);
@@ -285,30 +320,38 @@ export class GameRoom extends Room<GameState> {
 
             // 子弹击中玩家
             if (otherBody.label.startsWith('player_')) {
-                // Parse sessionId correctly (handle underscores in sessionId or suffix)
-                // Format: player_sessionId_index
-                const parts = otherBody.label.split('_');
-                // parts[0] is 'player'
-                // parts[last] is index
-                // parts[1...last-1] is sessionId (joined by _)
-                
-                // Actually, we use the full characterId as the key in entities map
-                // characterId = sessionId_index
-                // label = player_characterId
-                
-                // So we just need to remove 'player_' prefix
-                const targetCharacterId = otherBody.label.substring(7); // 'player_'.length = 7
+                const targetCharacterId = otherBody.label.substring(7);
 
-                if (bullet.ownerId === targetCharacterId) return; // 不能打自己
+                if (bullet.ownerId === targetCharacterId) return;
 
                 const targetPlayer = this.state.entities.get(targetCharacterId) as Player;
+                const shooterPlayer = this.state.entities.get(bullet.ownerId) as Player;
+                
                 if (targetPlayer && !targetPlayer.isDead) {
                     // 扣血
                     targetPlayer.hp -= bullet.damage;
+                    
+                    // 追踪伤害
+                    if (shooterPlayer) {
+                        shooterPlayer.damageDealt += bullet.damage;
+                    }
+                    
                     console.log(`Player ${targetCharacterId} hit by ${bullet.ownerId}, HP: ${targetPlayer.hp}/${targetPlayer.maxHP}`);
                     
+                    // 击退效果
+                    const knockbackAngle = Math.atan2(bullet.velocityY, bullet.velocityX);
+                    const knockbackForce = GAME_CONFIG.knockbackForce;
+                    const knockbackX = Math.cos(knockbackAngle) * knockbackForce;
+                    const knockbackY = Math.sin(knockbackAngle) * knockbackForce;
+                    Matter.Body.setVelocity(otherBody, { x: knockbackX, y: knockbackY });
+                    
                     // 检查死亡
-                    this.checkPlayerDeath(targetCharacterId);
+                    const died = this.checkPlayerDeath(targetCharacterId);
+                    if (died && shooterPlayer) {
+                        // 追踪击杀
+                        shooterPlayer.kills++;
+                        this.addKillFeed(bullet.ownerId, targetCharacterId);
+                    }
                 }
             }
             
@@ -364,25 +407,25 @@ export class GameRoom extends Room<GameState> {
         }
     }
     
-    checkPlayerDeath(sessionId: string) {
+    checkPlayerDeath(sessionId: string): boolean {
         const player = this.state.entities.get(sessionId) as Player;
-        if (!player) return;
+        if (!player) return false;
         
         if (player.hp <= 0 && !player.isDead) {
             player.isDead = true;
+            player.deaths++; // 追踪死亡
             console.log(`Player ${sessionId} (${player.teamId}) died!`);
             
-            // 隐藏玩家（通过Agent）
             const agent = this.agents.get(sessionId);
             if (agent && agent.body) {
-                // 移动到地图外
                 Matter.Body.setPosition(agent.body, { x: -1000, y: -1000 });
                 Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
             }
             
-            // 开始重生倒计时
             this.startRespawn(sessionId);
+            return true;
         }
+        return false;
     }
     
     startRespawn(sessionId: string) {
@@ -402,11 +445,34 @@ export class GameRoom extends Room<GameState> {
     }
 
     fixedTick(deltaTime: number) {
+        // 0. Update Game Phase
+        this.updateGamePhase();
+        
+        // 0.5. Handle Rematch Countdown
+        if (this.state.rematchCountdown > 0) {
+            this.state.rematchCountdown -= deltaTime / 1000; // Convert to seconds
+            if (this.state.rematchCountdown <= 0) {
+                this.state.rematchCountdown = 0;
+                this.resetGame();
+                return; // Skip this tick after reset
+            }
+        }
+        
+        // Skip gameplay if frozen
+        if (this.state.isFrozen) {
+            return;
+        }
+        
         // 1. Logic Update (Behaviors)
         this.agents.forEach(agent => agent.update(deltaTime));
 
         // 2. Physics Update
         Matter.Engine.update(this.engine, deltaTime);
+        
+        // 2.5. Enforce building phase restrictions
+        if (this.state.gamePhase === "building") {
+            this.enforceBuildingPhaseRestrictions();
+        }
 
         // 3. Post Update (Sync)
         this.agents.forEach(agent => agent.postUpdate(deltaTime));
@@ -602,18 +668,19 @@ export class GameRoom extends Room<GameState> {
         console.log(`Player ${sessionId} (${player.teamId}) respawned at team spawn`);
     }
 
-    onJoin(client: Client) {
+    onJoin(client: Client, options: any) {
         console.log(client.sessionId, "joined!");
         
-        // 分配队伍：第一个玩家=红队，第二个玩家=蓝队
+        const username = options.username || "Guest";
+        
         const teamId = this.teamAssignments.length === 0 ? TeamType.RED : TeamType.BLUE;
         this.teamAssignments.push(client.sessionId);
         
-        this.createCharacter(client, teamId, 1, true);
-        this.createCharacter(client, teamId, 2, false);
+        this.createCharacter(client, teamId, 1, true, username);
+        this.createCharacter(client, teamId, 2, false, username);
     }
 
-    createCharacter(client: Client, teamId: string, index: number, isActive: boolean) {
+    createCharacter(client: Client, teamId: string, index: number, isActive: boolean, username: string) {
         const characterId = `${client.sessionId}_${index}`;
         const player = new Player();
         player.type = EntityType.PLAYER;
@@ -624,6 +691,10 @@ export class GameRoom extends Room<GameState> {
         player.respawnTime = 0;
         player.ownerSessionId = client.sessionId;
         player.isActive = isActive;
+        player.username = username;
+        player.kills = 0;
+        player.deaths = 0;
+        player.damageDealt = 0;
         
         // 初始化背包 (HOTBAR)
         // 1: Bow (Weapon)
@@ -1017,12 +1088,270 @@ export class GameRoom extends Room<GameState> {
     }
 
     getActiveCharacterId(sessionId: string): string | undefined {
-        // Iterate entities to find the one owned by sessionId and isActive
         for (const [id, entity] of this.state.entities) {
             if (entity instanceof Player && entity.ownerSessionId === sessionId && entity.isActive) {
                 return id;
             }
         }
         return undefined;
+    }
+    
+    updateGamePhase() {
+        if (this.state.gamePhase === "ended") return;
+        
+        const currentTime = Date.now();
+        const elapsedTime = currentTime - this.state.gameStartTime;
+        
+        if (this.state.gamePhase === "building" && elapsedTime >= GAME_CONFIG.buildingPhaseDuration) {
+            this.state.gamePhase = "combat";
+            this.state.phaseEndTime = currentTime + GAME_CONFIG.combatPhaseDuration;
+            console.log("Game phase: BUILDING -> COMBAT");
+        } else if (this.state.gamePhase === "combat" && elapsedTime >= GAME_CONFIG.buildingPhaseDuration + GAME_CONFIG.combatPhaseDuration) {
+            this.state.gamePhase = "deathmatch";
+            this.state.phaseEndTime = currentTime + GAME_CONFIG.deathmatchPhaseDuration;
+            this.destroyAllBeds();
+            console.log("Game phase: COMBAT -> DEATHMATCH");
+        } else if (this.state.gamePhase === "deathmatch" && elapsedTime >= GAME_CONFIG.totalGameDuration) {
+            this.endGame();
+        }
+        
+        if (this.state.gamePhase === "combat" || this.state.gamePhase === "deathmatch") {
+            this.checkWinCondition();
+        }
+    }
+    
+    destroyAllBeds() {
+        const redBed = this.getBed(TeamType.RED);
+        const blueBed = this.getBed(TeamType.BLUE);
+        
+        if (redBed && redBed.hp > 0) {
+            redBed.hp = 0;
+            const redBedId = `bed_${TeamType.RED}`;
+            const bedBody = this.bedBodies.get(redBedId);
+            if (bedBody) {
+                Matter.Composite.remove(this.engine.world, bedBody);
+                this.bedBodies.delete(redBedId);
+            }
+        }
+        
+        if (blueBed && blueBed.hp > 0) {
+            blueBed.hp = 0;
+            const blueBedId = `bed_${TeamType.BLUE}`;
+            const bedBody = this.bedBodies.get(blueBedId);
+            if (bedBody) {
+                Matter.Composite.remove(this.engine.world, bedBody);
+                this.bedBodies.delete(blueBedId);
+            }
+        }
+    }
+    
+    checkWinCondition() {
+        const redBed = this.getBed(TeamType.RED);
+        const blueBed = this.getBed(TeamType.BLUE);
+        
+        let redAlive = 0;
+        let blueAlive = 0;
+        
+        this.state.entities.forEach((entity) => {
+            if (entity instanceof Player && !entity.isDead) {
+                if (entity.teamId === TeamType.RED) redAlive++;
+                if (entity.teamId === TeamType.BLUE) blueAlive++;
+            }
+        });
+        
+        if ((!redBed || redBed.hp <= 0) && redAlive === 0) {
+            this.state.winner = TeamType.BLUE;
+            this.endGame();
+            return;
+        }
+        
+        if ((!blueBed || blueBed.hp <= 0) && blueAlive === 0) {
+            this.state.winner = TeamType.RED;
+            this.endGame();
+            return;
+        }
+    }
+    
+    endGame() {
+        if (this.state.gamePhase === "ended") return;
+        
+        this.state.gamePhase = "ended";
+        this.state.isFrozen = true; // Freeze game
+        
+        if (!this.state.winner) {
+            const redBed = this.getBed(TeamType.RED);
+            const blueBed = this.getBed(TeamType.BLUE);
+            
+            const redHP = redBed ? redBed.hp : 0;
+            const blueHP = blueBed ? blueBed.hp : 0;
+            
+            if (redHP > blueHP) {
+                this.state.winner = TeamType.RED;
+            } else if (blueHP > redHP) {
+                this.state.winner = TeamType.BLUE;
+            } else {
+                let redAlive = 0;
+                let blueAlive = 0;
+                
+                this.state.entities.forEach((entity) => {
+                    if (entity instanceof Player && !entity.isDead) {
+                        if (entity.teamId === TeamType.RED) redAlive++;
+                        if (entity.teamId === TeamType.BLUE) blueAlive++;
+                    }
+                });
+                
+                if (redAlive > blueAlive) {
+                    this.state.winner = TeamType.RED;
+                } else if (blueAlive > redAlive) {
+                    this.state.winner = TeamType.BLUE;
+                } else {
+                    this.state.winner = "draw";
+                }
+            }
+        }
+        
+        console.log(`Game ended! Winner: ${this.state.winner}`);
+    }
+    
+    addKillFeed(killerId: string, victimId: string) {
+        const killer = this.state.entities.get(killerId) as Player;
+        const victim = this.state.entities.get(victimId) as Player;
+        
+        if (!killer || !victim) return;
+        
+        const killerName = killer.username || killerId;
+        const victimName = victim.username || victimId;
+        const killMessage = `${killerName} eliminated ${victimName}`;
+        
+        this.state.killFeed.push(killMessage);
+        if (this.state.killFeed.length > 5) {
+            this.state.killFeed.shift();
+        }
+        
+        console.log(killMessage);
+    }
+    
+    enforceBuildingPhaseRestrictions() {
+        this.agents.forEach((agent) => {
+            const player = agent.schema as Player;
+            if (!player || player.isDead) return;
+            
+            const bedPos = player.teamId === TeamType.RED ? GAME_CONFIG.redBedPos : GAME_CONFIG.blueBedPos;
+            const dx = agent.body.position.x - bedPos.x;
+            const dy = agent.body.position.y - bedPos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > GAME_CONFIG.buildingPhaseRadius) {
+                const angle = Math.atan2(dy, dx);
+                const newX = bedPos.x + Math.cos(angle) * GAME_CONFIG.buildingPhaseRadius;
+                const newY = bedPos.y + Math.sin(angle) * GAME_CONFIG.buildingPhaseRadius;
+                Matter.Body.setPosition(agent.body, { x: newX, y: newY });
+                Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
+            }
+        });
+    }
+
+    checkAllPlayersReady(): boolean {
+        // Get all active session IDs
+        const activeSessions = Array.from(this.clients.keys()).map(client => client.sessionId);
+        
+        console.log('checkAllPlayersReady:');
+        console.log('  Active sessions:', activeSessions);
+        console.log('  Ready map:', Array.from(this.state.rematchReady.entries()));
+        
+        // Check if all players are ready
+        for (const sessionId of activeSessions) {
+            if (!this.state.rematchReady.get(sessionId)) {
+                console.log(`  Session ${sessionId} is NOT ready`);
+                return false;
+            }
+        }
+        
+        console.log('  All players ready!');
+        // Need at least one player
+        return activeSessions.length > 0;
+    }
+
+    resetGame() {
+        console.log('Resetting game for rematch...');
+        
+        // Reset game state
+        this.state.gamePhase = 'building';
+        this.state.gameStartTime = Date.now();
+        this.state.phaseEndTime = Date.now() + GAME_CONFIG.buildingPhaseDuration;
+        this.state.winner = '';
+        this.state.isFrozen = false;
+        this.state.rematchReady.clear();
+        this.state.rematchCountdown = 0;
+        this.state.killFeed.clear();
+
+        // Remove all entities except players
+        const playersToKeep = new Map<string, Player>();
+        this.state.entities.forEach((entity, id) => {
+            if (entity.type === EntityType.PLAYER) {
+                playersToKeep.set(id, entity as Player);
+            }
+        });
+        
+        // Clear entities
+        this.state.entities.clear();
+        
+        // Re-add players with reset stats
+        playersToKeep.forEach((player, id) => {
+            player.hp = 100;
+            player.maxHP = 100;
+            player.isDead = false;
+            player.respawnTime = 0;
+            player.kills = 0;
+            player.deaths = 0;
+            player.damageDealt = 0;
+            player.lastShootTime = 0;
+            
+            // Clear inventory
+            player.inventory.clear();
+            for (let i = 0; i < INVENTORY_SIZE; i++) {
+                const item = new InventoryItem();
+                item.itemId = ItemType.EMPTY;
+                item.count = 0;
+                player.inventory.push(item);
+            }
+            player.selectedSlot = 0;
+            
+            // Reset position to spawn
+            const spawnPos = player.teamId === TeamType.RED ? GAME_CONFIG.redSpawn : GAME_CONFIG.blueSpawn;
+            player.x = spawnPos.x;
+            player.y = spawnPos.y;
+            
+            // Reset physics body
+            const agent = this.agents.get(id);
+            if (agent) {
+                Matter.Body.setPosition(agent.body, { x: spawnPos.x, y: spawnPos.y });
+                Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
+            }
+            
+            this.state.entities.set(id, player);
+        });
+
+        // Remove all bullets
+        this.bulletBodies.forEach((body, id) => {
+            Matter.Composite.remove(this.engine.world, body);
+        });
+        this.bulletBodies.clear();
+
+        // Remove all blocks
+        this.blockBodies.forEach((body, id) => {
+            Matter.Composite.remove(this.engine.world, body);
+        });
+        this.blockBodies.clear();
+
+        // Reset beds
+        this.state.entities.forEach((entity, id) => {
+            if (entity.type === EntityType.BED) {
+                const bed = entity as Bed;
+                bed.hp = bed.maxHP;
+            }
+        });
+
+        console.log('Game reset complete!');
     }
 }

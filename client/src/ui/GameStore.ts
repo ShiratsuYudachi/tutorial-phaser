@@ -1,4 +1,4 @@
-import { Client, Room } from "colyseus.js";
+import { Client, Room, getStateCallbacks } from "colyseus.js";
 import { GameState, Player } from "../../../server/src/shared/Schema";
 import { BACKEND_URL } from "../backend";
 import { useState, useEffect } from "react";
@@ -17,6 +17,32 @@ class GameStore {
     isShopOpen: boolean = false;
     isNearBed: boolean = false;
 
+    // Timer state
+    totalTime: string = '4:00';
+    phaseTime: string = '0:30';
+    phaseName: string = '🏗️ BUILDING PHASE';
+    phaseColor: string = '#ffff00';
+
+    // Kill feed
+    killFeed: string[] = [];
+
+    // Game ended state
+    isGameEnded: boolean = false;
+    gameWinner: string = '';
+    playerStats: Array<{
+        id: string;
+        username: string;
+        kills: number;
+        deaths: number;
+        damage: number;
+        teamId: string;
+    }> = [];
+    
+    // Rematch state
+    rematchReady: Map<string, boolean> = new Map();
+    rematchCountdown: number = 0;
+    mySessionId: string = '';
+
     // Singleton instance
     static instance = new GameStore();
 
@@ -24,17 +50,24 @@ class GameStore {
         this.client = new Client(BACKEND_URL);
     }
 
-    async connect() {
+    async connect(options?: { username?: string; userId?: string }) {
         // Prevent multiple connections
         if (this.connectPromise) {
             return this.connectPromise;
         }
 
+        // Get player info from window if available
+        const playerInfo = (window as any).playerInfo || {};
+        const joinOptions = {
+            username: options?.username || playerInfo.username || 'Guest',
+            userId: options?.userId || playerInfo.userId || ''
+        };
+
         this.connectPromise = (async () => {
             try {
-                this.room = await this.client.joinOrCreate<GameState>("game_room", {});
-                // this.currentPlayerId = this.room.sessionId; // Removed: determined by active character
-                console.log("GameStore connected to room:", this.room.name);
+                this.room = await this.client.joinOrCreate<GameState>("game_room", joinOptions);
+                this.mySessionId = this.room.sessionId;
+                console.log("GameStore connected to room:", this.room.name, "as", joinOptions.username);
                 
                 // Wait for state to be ready
                 await this.waitForState();
@@ -80,6 +113,9 @@ class GameStore {
         
         console.log("GameStore: setting up listeners");
         
+        // Use the new getStateCallbacks API for proper state change tracking
+        const $ = getStateCallbacks(this.room);
+        
         // Listen for any state change to notify UI
         this.room.onStateChange((state) => {
             this.notify();
@@ -88,30 +124,26 @@ class GameStore {
         // Helper to setup player listeners
         const setupPlayerListeners = (player: any, id: string) => {
              // Listen to property changes
-             if (player.onChange) {
-                player.onChange(() => {
-                    if (player.isActive && this.currentPlayerId !== id) {
-                        this.currentPlayerId = id;
-                        this.notify();
-                    }
-                    console.log("GameStore: player changed");
-                    this.notify();
-                });
-             }
+             $(player).onChange(() => {
+                 if (player.isActive && this.currentPlayerId !== id) {
+                     this.currentPlayerId = id;
+                     this.notify();
+                 }
+                 console.log("GameStore: player changed");
+                 this.notify();
+             });
 
-             // Listen to inventory changes
+             // Listen to inventory changes using $ callbacks
              if (player.inventory) {
-                 const inventory = player.inventory as any;
-                 
-                 if (inventory.onAdd) inventory.onAdd(() => {
+                 $(player.inventory).onAdd(() => {
                      console.log("GameStore: inventory item added");
                      this.notify();
                  });
-                 if (inventory.onRemove) inventory.onRemove(() => {
+                 $(player.inventory).onRemove(() => {
                      console.log("GameStore: inventory item removed");
                      this.notify();
                  });
-                 if (inventory.onChange) inventory.onChange(() => {
+                 $(player.inventory).onChange(() => {
                      console.log("GameStore: inventory changed");
                      this.notify();
                  });
@@ -131,21 +163,52 @@ class GameStore {
         });
 
         // 2. Listen for new entities
-        const entities = this.room.state.entities as any;
+        $(this.room.state).entities.onAdd((entity: any, id: string) => {
+            console.log("GameStore: entity added", id);
+            
+            if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
+                 setupPlayerListeners(entity, id);
+                 if (entity.isActive) {
+                     this.currentPlayerId = id;
+                     this.notify();
+                 }
+            }
+        });
         
-        if (entities && entities.onAdd) {
-            entities.onAdd((entity: any, id: string) => {
-                console.log("GameStore: entity added", id);
-                
-                if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
-                     setupPlayerListeners(entity, id);
-                     if (entity.isActive) {
-                         this.currentPlayerId = id;
-                         this.notify();
-                     }
-                }
+        // 3. Sync existing rematchReady values first
+        const state = this.room.state as any;
+        if (state.rematchReady) {
+            state.rematchReady.forEach((value: boolean, sessionId: string) => {
+                console.log('GameStore: initial sync rematchReady', sessionId, '=', value);
+                this.rematchReady.set(sessionId, value);
             });
         }
+        
+        // 4. Listen for rematch state changes using the correct $ callbacks API
+        $(this.room.state).rematchReady.onAdd((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onAdd', sessionId, '=', value);
+            this.rematchReady.set(sessionId, value);
+            this.notify();
+        });
+        
+        $(this.room.state).rematchReady.onChange((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onChange', sessionId, '=', value);
+            this.rematchReady.set(sessionId, value);
+            this.notify();
+        });
+        
+        $(this.room.state).rematchReady.onRemove((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onRemove', sessionId);
+            this.rematchReady.delete(sessionId);
+            this.notify();
+        });
+        
+        // 5. Listen for countdown changes
+        $(this.room.state).listen("rematchCountdown", (value: number) => {
+            console.log('GameStore: rematchCountdown changed', this.rematchCountdown, '->', value);
+            this.rematchCountdown = value;
+            this.notify();
+        });
     }
 
     subscribe(listener: Listener) {
@@ -197,6 +260,80 @@ class GameStore {
             this.room.send("shop_trade", { tradeId });
         }
     }
+
+    // Timer methods
+    updateTimer(data: { totalTime: string; phaseTime: string; phaseName: string; phaseColor: string }) {
+        this.totalTime = data.totalTime;
+        this.phaseTime = data.phaseTime;
+        this.phaseName = data.phaseName;
+        this.phaseColor = data.phaseColor;
+        this.notify();
+    }
+
+    // Kill feed methods
+    addKillFeedMessage(message: string) {
+        this.killFeed = [...this.killFeed.slice(-4), message];
+        this.notify();
+    }
+
+    clearKillFeed() {
+        this.killFeed = [];
+        this.notify();
+    }
+
+    // Game ended methods
+    setGameEnded(ended: boolean, winner?: string, playerStats?: Array<any>) {
+        this.isGameEnded = ended;
+        if (winner) {
+            this.gameWinner = winner;
+        }
+        if (playerStats) {
+            this.playerStats = playerStats;
+        }
+        // Close shop when game ends
+        if (ended && this.isShopOpen) {
+            this.isShopOpen = false;
+        }
+        // Clear rematch state when new game ends
+        if (ended) {
+            this.rematchReady.clear();
+            this.rematchCountdown = 0;
+        }
+        this.notify();
+    }
+    
+    // Rematch methods
+    sendReadyForRematch() {
+        console.log('===== sendReadyForRematch called =====');
+        console.log('  mySessionId:', this.mySessionId);
+        console.log('  room exists:', !!this.room);
+        
+        if (this.room) {
+            const gamePhase = (this.room.state as any)?.gamePhase;
+            console.log('  Current gamePhase:', gamePhase);
+            
+            if (gamePhase !== 'ended') {
+                console.warn('  WARNING: Game not ended yet! gamePhase =', gamePhase);
+                console.warn('  Message may be ignored by server');
+            }
+            
+            console.log('  Sending "ready_for_rematch" message...');
+            this.room.send("ready_for_rematch");
+            console.log('  ✅ Message sent successfully');
+            
+            // Immediately check if it was added to local state
+            setTimeout(() => {
+                const isReady = this.rematchReady.get(this.mySessionId);
+                console.log('  After 100ms, myReady =', isReady);
+                if (!isReady) {
+                    console.error('  ❌ WARNING: rematchReady not updated after 100ms!');
+                    console.error('  This suggests the server may not have processed the message');
+                }
+            }, 100);
+        } else {
+            console.error('  ❌ ERROR: No room available!');
+        }
+    }
 }
 
 export const gameStore = GameStore.instance;
@@ -240,4 +377,89 @@ export function useShopState() {
     }, []);
 
     return { isOpen, isNearBed };
+}
+
+export function useGameTimer() {
+    const [totalTime, setTotalTime] = useState(gameStore.totalTime);
+    const [phaseTime, setPhaseTime] = useState(gameStore.phaseTime);
+    const [phaseName, setPhaseName] = useState(gameStore.phaseName);
+    const [phaseColor, setPhaseColor] = useState(gameStore.phaseColor);
+
+    useEffect(() => {
+        const update = () => {
+            setTotalTime(gameStore.totalTime);
+            setPhaseTime(gameStore.phaseTime);
+            setPhaseName(gameStore.phaseName);
+            setPhaseColor(gameStore.phaseColor);
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return { totalTime, phaseTime, phaseName, phaseColor };
+}
+
+export function useKillFeed() {
+    const [killFeed, setKillFeed] = useState(gameStore.killFeed);
+
+    useEffect(() => {
+        const update = () => {
+            setKillFeed([...gameStore.killFeed]);
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return killFeed;
+}
+
+export function useGameEnded() {
+    const [isGameEnded, setIsGameEnded] = useState(gameStore.isGameEnded);
+
+    useEffect(() => {
+        const update = () => {
+            setIsGameEnded(gameStore.isGameEnded);
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return isGameEnded;
+}
+
+export function useGameEndData() {
+    const [data, setData] = useState({
+        winner: gameStore.gameWinner,
+        playerStats: gameStore.playerStats
+    });
+
+    useEffect(() => {
+        const update = () => {
+            setData({
+                winner: gameStore.gameWinner,
+                playerStats: gameStore.playerStats
+            });
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return data;
+}
+
+export function useRematchState() {
+    const [state, setState] = useState({
+        rematchReady: new Map(gameStore.rematchReady),
+        rematchCountdown: gameStore.rematchCountdown,
+        mySessionId: gameStore.mySessionId
+    });
+
+    useEffect(() => {
+        const update = () => {
+            setState({
+                rematchReady: new Map(gameStore.rematchReady),
+                rematchCountdown: gameStore.rematchCountdown,
+                mySessionId: gameStore.mySessionId
+            });
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return state;
 }

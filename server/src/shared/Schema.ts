@@ -47,6 +47,14 @@ export class Player extends HealthEntity {
     @type([ InventoryItem ]) inventory = new ArraySchema<InventoryItem>();
     @type("number") selectedSlot: number = 0;
 
+    // Player Statistics
+    @type("number") kills: number = 0;
+    @type("number") deaths: number = 0;
+    @type("number") damageDealt: number = 0;
+    
+    // Player Info
+    @type("string") username: string = "";
+
     inputQueue: InputData[] = [];
 }
 
@@ -83,4 +91,22 @@ export class GameState extends Schema {
     @type("number") mapWidth: number;
     @type("number") mapHeight: number;
     @type({ map: Entity }) entities = new MapSchema<Entity>();
+    
+    // Game Phase System
+    @type("string") gamePhase: string = "building"; // "building" | "combat" | "deathmatch" | "ended"
+    @type("number") gameStartTime: number = 0;
+    @type("number") phaseEndTime: number = 0;
+    
+    // Winner Info
+    @type("string") winner: string = ""; // "" | "red" | "blue" | "draw"
+    
+    // Kill Feed (last 5 kills)
+    @type(["string"]) killFeed = new ArraySchema<string>();
+    
+    // Game is frozen (inputs disabled)
+    @type("boolean") isFrozen: boolean = false;
+    
+    // Rematch System
+    @type({ map: "boolean" }) rematchReady = new MapSchema<boolean>(); // sessionId -> ready
+    @type("number") rematchCountdown: number = 0; // 0 = not started, >0 = countdown seconds
 }

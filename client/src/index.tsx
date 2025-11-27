@@ -2,9 +2,14 @@
 import Phaser from "phaser";
 import { GameScene } from "./scenes/GameScene";
 import { BACKEND_HTTP_URL } from "./backend";
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
+import { FrontPage } from './ui/FrontPage';
+import { gameStore } from './ui/GameStore';
+
+// Game state management
+let game: Phaser.Game | null = null;
 
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
@@ -22,13 +27,56 @@ const config: Phaser.Types.Core.GameConfig = {
     scene: [GameScene],
 };
 
-const game = new Phaser.Game(config);
+// Main App wrapper with state management
+const MainApp: React.FC = () => {
+    const [gameStarted, setGameStarted] = useState(false);
+    const [playerInfo, setPlayerInfo] = useState<{ username: string; userId: string; team?: string } | null>(null);
+
+    const handleGameStart = (options: { username: string; userId: string; team?: string }) => {
+        console.log('Starting game with options:', options);
+        setPlayerInfo(options);
+        setGameStarted(true);
+        
+        // Store player info for the game
+        (window as any).playerInfo = options;
+    };
+
+    useEffect(() => {
+        if (gameStarted && !game) {
+            // Show game menu
+            const gameMenu = document.getElementById('game-menu');
+            if (gameMenu) {
+                gameMenu.classList.remove('hidden');
+            }
+            
+            // Show Phaser container
+            const phaserContainer = document.getElementById('phaser-example');
+            if (phaserContainer) {
+                phaserContainer.style.display = 'block';
+            }
+            
+            game = new Phaser.Game(config);
+        }
+    }, [gameStarted]);
+
+    if (!gameStarted) {
+        return <FrontPage onGameStart={handleGameStart} />;
+    }
+
+    return <App />;
+};
 
 // Render React UI
 const container = document.getElementById('react-root');
 if (container) {
     const root = createRoot(container);
-    root.render(<App />);
+    root.render(<MainApp />);
+}
+
+// Hide phaser container initially
+const phaserContainer = document.getElementById('phaser-example');
+if (phaserContainer) {
+    phaserContainer.style.display = 'none';
 }
 
 // --- Latency Simulation Logic ---

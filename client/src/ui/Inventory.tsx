@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { Icon } from "@iconify/react";
-import { gameStore, useCurrentPlayer } from "./GameStore";
+import { gameStore, useCurrentPlayer, useGameEnded } from "./GameStore";
 import { ITEM_DEFINITIONS, INVENTORY_SIZE, ItemType } from "../../../server/src/shared/Constants";
 
 export const Inventory: React.FC = () => {
     const player = useCurrentPlayer();
+    const isGameEnded = useGameEnded();
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [isDraggingOutside, setIsDraggingOutside] = useState(false);
 
@@ -12,6 +13,9 @@ export const Inventory: React.FC = () => {
     const selectedSlot = player ? player.selectedSlot : 0;
 
     const handleSlotClick = (index: number) => {
+        // Disable click when game ended
+        if (isGameEnded) return;
+        
         if (gameStore.room) {
             gameStore.room.send("inventory_action", { type: "select", index });
             // No optimistic update needed, state sync handles it
@@ -19,6 +23,12 @@ export const Inventory: React.FC = () => {
     };
 
     const handleDragStart = (e: React.DragEvent, index: number) => {
+        // Disable drag when game ended
+        if (isGameEnded) {
+            e.preventDefault();
+            return;
+        }
+        
         const item = inventory[index];
         // Only allow dragging if there's a real item (not empty)
         if (!item || !item.itemId || item.itemId === ItemType.EMPTY) {
@@ -130,7 +140,7 @@ export const Inventory: React.FC = () => {
                 return (
                     <div
                         key={index}
-                        draggable={!isEmpty}
+                        draggable={!isEmpty && !isGameEnded}
                         onDragStart={(e) => handleDragStart(e, index)}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDrop={(e) => handleDrop(e, index)}
@@ -146,10 +156,11 @@ export const Inventory: React.FC = () => {
                             justifyContent: 'center',
                             alignItems: 'center',
                             position: 'relative',
-                            cursor: 'pointer',
-                            opacity: draggedIndex === index ? 0.5 : 1,
+                            cursor: isGameEnded ? 'not-allowed' : 'pointer',
+                            opacity: isGameEnded ? 0.3 : (draggedIndex === index ? 0.5 : 1),
                             transition: 'all 0.1s ease-in-out',
-                            transform: isSelected ? 'scale(1.05)' : 'scale(1)'
+                            transform: isSelected ? 'scale(1.05)' : 'scale(1)',
+                            filter: isGameEnded ? 'grayscale(100%)' : 'none'
                         }}
                     >
                         {def ? (

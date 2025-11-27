@@ -44,6 +44,7 @@ export class GameScene extends Phaser.Scene {
     // Preview
     blockPreview: Phaser.GameObjects.Rectangle;
     gridGraphics: Phaser.GameObjects.Graphics;
+    isGridDrawn: boolean = false;  // Track if grid is already drawn
     
     // Audio
     bowShootSound: Phaser.Sound.BaseSound;
@@ -51,6 +52,15 @@ export class GameScene extends Phaser.Scene {
     dartShootSound: Phaser.Sound.BaseSound;
     placeBlockSound: Phaser.Sound.BaseSound;
     lastMouseDown: boolean = false;
+    
+    // New UI Elements for game phases and stats
+    redAirWall: Phaser.GameObjects.Graphics;
+    blueAirWall: Phaser.GameObjects.Graphics;
+    // Timer and Kill Feed now handled by React UI (see client/src/ui/App.tsx)
+    lastKillFeedLength: number = 0;
+    lastGamePhase: string = '';
+    // End Game Screen now handled by React UI (see client/src/ui/App.tsx)
+    lastPlayerHP: Map<string, number> = new Map();
     
     inputPayload: InputData = {
         left: false, right: false, up: false, down: false,
@@ -190,6 +200,16 @@ export class GameScene extends Phaser.Scene {
         this.gridGraphics = this.add.graphics();
         this.gridGraphics.setDepth(1);
         this.gridGraphics.setVisible(false);
+        // Pre-draw grid to avoid performance issues on first use
+        this.drawGrid();
+        this.isGridDrawn = true;
+        
+        // Create Air Walls
+        this.redAirWall = this.add.graphics().setDepth(5);
+        this.blueAirWall = this.add.graphics().setDepth(5);
+
+        // Timer, Kill Feed, and End Game Screen are now handled by React UI
+        // See client/src/ui/App.tsx
         
         this.createSoundEffects();
     }
@@ -288,6 +308,15 @@ export class GameScene extends Phaser.Scene {
                         if ((entity instanceof Block || entity.type === 'block') && visual instanceof Phaser.GameObjects.Container) {
                             this.updateBlockHealthBar(visual, entity as Block);
                         }
+                        
+                        if ((entity instanceof Bullet || entity.type === 'bullet') && visual instanceof Phaser.GameObjects.Container) {
+                            const bullet = entity as Bullet;
+                            // Update rotation for arrows (not for spinning knives or fireballs)
+                            if (bullet.weaponType === ItemType.BOW) {
+                                const angle = Math.atan2(bullet.velocityY, bullet.velocityX);
+                                visual.setRotation(angle);
+                            }
+                        }
                     });
                 }
             });
@@ -356,6 +385,14 @@ export class GameScene extends Phaser.Scene {
     
     updatePlayerVisuals(container: Phaser.GameObjects.Container, player: Player, id: string) {
         this.updateHealthBar(container, player);
+        
+        // Track HP for damage numbers
+        const lastHP = this.lastPlayerHP.get(id);
+        if (lastHP !== undefined && lastHP > player.hp) {
+            const damage = lastHP - player.hp;
+            this.showDamageNumber(container.x, container.y, damage);
+        }
+        this.lastPlayerHP.set(id, player.hp);
         
         // Update Highlight
         const highlight = container.getData('highlight') as Phaser.GameObjects.Graphics;
@@ -448,8 +485,78 @@ export class GameScene extends Phaser.Scene {
 
     createBullet(bullet: Bullet) {
         const weaponType = bullet.weaponType as WeaponItem;
-        const color = WEAPON_CONFIG[weaponType]?.color || 0xffff00;
-        return this.add.circle(bullet.x, bullet.y, GAME_CONFIG.bulletRadius, color);
+        const container = this.add.container(bullet.x, bullet.y);
+        container.setDepth(10);
+
+        switch (weaponType) {
+            case ItemType.BOW: {
+                // Arrow - triangle pointing forward with tail
+                const arrowHead = this.add.triangle(8, 0, 0, -4, 0, 4, 12, 0, 0x8B4513);
+                const arrowShaft = this.add.rectangle(0, 0, 16, 2, 0xA0522D);
+                const arrowFletch = this.add.triangle(-8, 0, -12, -3, -12, 3, -6, 0, 0xFFFFFF);
+                
+                container.add([arrowShaft, arrowHead, arrowFletch]);
+                
+                // Calculate rotation based on velocity
+                const angle = Math.atan2(bullet.velocityY, bullet.velocityX);
+                container.setRotation(angle);
+                break;
+            }
+            
+            case ItemType.FIREBALL_STAFF: {
+                // Fireball - glowing circle with flame effect
+                const core = this.add.circle(0, 0, 6, 0xFF4500);
+                const glow1 = this.add.circle(0, 0, 8, 0xFF6347).setAlpha(0.6);
+                const glow2 = this.add.circle(0, 0, 10, 0xFFFF00).setAlpha(0.3);
+                
+                container.add([glow2, glow1, core]);
+                
+                // Add pulsing animation
+                this.tweens.add({
+                    targets: [glow1, glow2],
+                    scaleX: 1.2,
+                    scaleY: 1.2,
+                    alpha: 0.3,
+                    duration: 300,
+                    yoyo: true,
+                    repeat: -1
+                });
+                break;
+            }
+            
+            case ItemType.THROWING_KNIFE: {
+                // Dart/Knife - diamond shape
+                const blade = this.add.triangle(6, 0, 0, -3, 0, 3, 8, 0, 0xC0C0C0);
+                const handle = this.add.rectangle(-2, 0, 6, 2, 0x654321);
+                const tip = this.add.circle(8, 0, 1, 0xFFFFFF);
+                
+                container.add([handle, blade, tip]);
+                
+                // Calculate rotation and add spin
+                const angle = Math.atan2(bullet.velocityY, bullet.velocityX);
+                container.setRotation(angle);
+                
+                // Add spinning animation
+                this.tweens.add({
+                    targets: container,
+                    angle: container.angle + 360,
+                    duration: 500,
+                    repeat: -1,
+                    ease: 'Linear'
+                });
+                break;
+            }
+            
+            default: {
+                // Fallback - simple colored circle
+                const color = WEAPON_CONFIG[weaponType]?.color || 0xffff00;
+                const circle = this.add.circle(0, 0, GAME_CONFIG.bulletRadius, color);
+                container.add(circle);
+                break;
+            }
+        }
+
+        return container;
     }
 
     createBlock(block: Block) {
@@ -499,6 +606,17 @@ export class GameScene extends Phaser.Scene {
     update(time: number, delta: number): void {
         if (!this.room) return;
 
+        // Update timers and UI
+        this.updateTimers();
+        this.updateAirWalls();
+        this.updateKillFeed();
+        
+        // Check for game end (handled by React UI now)
+        if (this.room.state.gamePhase === 'ended' && this.lastGamePhase !== 'ended') {
+            this.showEndGame();
+        }
+        this.lastGamePhase = this.room.state.gamePhase;
+
         this.elapsedTime += delta;
         while (this.elapsedTime >= this.fixedTimeStep) {
             this.elapsedTime -= this.fixedTimeStep;
@@ -516,14 +634,16 @@ export class GameScene extends Phaser.Scene {
         // Check if player is near their team's bed
         this.checkNearBed();
         
-        // Rotate player visual
-        const playerVisual = this.entityVisuals.get(this.currentPlayerId);
-        if (playerVisual && playerVisual instanceof Phaser.GameObjects.Container) {
-            const shipContainer = playerVisual.getData('shipContainer');
-            if (shipContainer) {
-                const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
-                const angle = Phaser.Math.Angle.Between(playerVisual.x, playerVisual.y, worldPoint.x, worldPoint.y);
-                shipContainer.rotation = angle;
+        // Rotate player visual (disabled when game ended)
+        if (!this.room.state.isFrozen) {
+            const playerVisual = this.entityVisuals.get(this.currentPlayerId);
+            if (playerVisual && playerVisual instanceof Phaser.GameObjects.Container) {
+                const shipContainer = playerVisual.getData('shipContainer');
+                if (shipContainer) {
+                    const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
+                    const angle = Phaser.Math.Angle.Between(playerVisual.x, playerVisual.y, worldPoint.x, worldPoint.y);
+                    shipContainer.rotation = angle;
+                }
             }
         }
 
@@ -541,14 +661,20 @@ export class GameScene extends Phaser.Scene {
             
             if (isValidItem && isBlock(selectedItem.itemId as ItemType)) {
                  // Block Preview Logic
+                 // Draw grid only once when first needed
+                 if (!this.isGridDrawn) {
+                     this.drawGrid();
+                     this.isGridDrawn = true;
+                 }
                  this.gridGraphics.setVisible(true);
-                 this.drawGrid();
                  
                  const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
                  const gridSize = GAME_CONFIG.gridSize;
                  const gridX = Math.round(worldPoint.x / gridSize) * gridSize;
                  const gridY = Math.round(worldPoint.y / gridSize) * gridSize;
                  
+                 // Get player visual for distance check
+                 const playerVisual = this.entityVisuals.get(this.currentPlayerId);
                  if (playerVisual) {
                      const distance = Math.sqrt((gridX - playerVisual.x) ** 2 + (gridY - playerVisual.y) ** 2);
                      const inRange = distance <= GAME_CONFIG.maxPlaceRange;
@@ -594,6 +720,11 @@ export class GameScene extends Phaser.Scene {
         
         // Safety check: ensure room and state are ready
         if (!this.room || !this.room.state || !this.room.state.entities) {
+            return;
+        }
+        
+        // Freeze inputs if game ended
+        if (this.room.state.isFrozen) {
             return;
         }
         
@@ -741,5 +872,160 @@ export class GameScene extends Phaser.Scene {
         container.add(label);
 
         return container;
+    }
+
+    updateTimers() {
+        if (!this.room || !this.room.state) return;
+        
+        const state = this.room.state;
+        const currentTime = Date.now();
+        const totalElapsed = currentTime - state.gameStartTime;
+        const totalRemaining = Math.max(0, GAME_CONFIG.totalGameDuration - totalElapsed);
+        
+        // Total Timer
+        const totalSeconds = Math.ceil(totalRemaining / 1000);
+        const totalMins = Math.floor(totalSeconds / 60);
+        const totalSecs = totalSeconds % 60;
+        const totalTimeStr = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+        
+        // Phase Timer
+        const phaseRemaining = Math.max(0, state.phaseEndTime - currentTime);
+        const phaseSeconds = Math.ceil(phaseRemaining / 1000);
+        const phaseMins = Math.floor(phaseSeconds / 60);
+        const phaseSecs = phaseSeconds % 60;
+        const phaseTimeStr = `${phaseMins}:${phaseSecs.toString().padStart(2, '0')}`;
+        
+        // Phase Name and Color
+        let phaseName = '🏗️ BUILDING PHASE';
+        let phaseColor = '#ffff00';
+        
+        switch (state.gamePhase) {
+            case 'building':
+                phaseName = '🏗️ BUILDING PHASE';
+                phaseColor = '#ffff00';
+                break;
+            case 'combat':
+                phaseName = '⚔️ COMBAT PHASE';
+                phaseColor = '#ff0000';
+                break;
+            case 'deathmatch':
+                phaseName = '💀 DEATHMATCH!';
+                phaseColor = '#ff00ff';
+                break;
+            case 'ended':
+                phaseName = 'GAME ENDED';
+                phaseColor = '#888888';
+                break;
+        }
+        
+        // Update React UI via GameStore
+        const { gameStore } = require('../ui/GameStore');
+        gameStore.updateTimer({
+            totalTime: totalTimeStr,
+            phaseTime: phaseTimeStr,
+            phaseName: phaseName,
+            phaseColor: phaseColor
+        });
+    }
+
+    updateAirWalls() {
+        if (!this.room || !this.room.state) return;
+        
+        if (this.room.state.gamePhase === 'building') {
+            // Show air walls
+            this.redAirWall.clear();
+            this.redAirWall.lineStyle(3, 0x00ff00, 0.6);
+            this.redAirWall.fillStyle(0x00ff00, 0.1);
+            this.redAirWall.strokeCircle(
+                GAME_CONFIG.redBedPos.x,
+                GAME_CONFIG.redBedPos.y,
+                GAME_CONFIG.buildingPhaseRadius
+            );
+            this.redAirWall.fillCircle(
+                GAME_CONFIG.redBedPos.x,
+                GAME_CONFIG.redBedPos.y,
+                GAME_CONFIG.buildingPhaseRadius
+            );
+            
+            this.blueAirWall.clear();
+            this.blueAirWall.lineStyle(3, 0x00ff00, 0.6);
+            this.blueAirWall.fillStyle(0x00ff00, 0.1);
+            this.blueAirWall.strokeCircle(
+                GAME_CONFIG.blueBedPos.x,
+                GAME_CONFIG.blueBedPos.y,
+                GAME_CONFIG.buildingPhaseRadius
+            );
+            this.blueAirWall.fillCircle(
+                GAME_CONFIG.blueBedPos.x,
+                GAME_CONFIG.blueBedPos.y,
+                GAME_CONFIG.buildingPhaseRadius
+            );
+        } else {
+            // Hide air walls
+            this.redAirWall.clear();
+            this.blueAirWall.clear();
+        }
+    }
+
+    updateKillFeed() {
+        if (!this.room || !this.room.state) return;
+        
+        const killFeed = this.room.state.killFeed;
+        
+        if (killFeed.length !== this.lastKillFeedLength) {
+            this.lastKillFeedLength = killFeed.length;
+            
+            // Get the latest message and add to GameStore
+            if (killFeed.length > 0) {
+                const latestMessage = killFeed[killFeed.length - 1];
+                const { gameStore } = require('../ui/GameStore');
+                gameStore.addKillFeedMessage(latestMessage);
+            }
+        }
+    }
+
+    showEndGame() {
+        if (!this.room || !this.room.state) return;
+        
+        const winner = this.room.state.winner;
+        
+        // Collect player stats
+        const playerStats: any[] = [];
+        this.room.state.entities.forEach((entity, id) => {
+            if (entity.type === 'player') {
+                const player = entity as any;
+                playerStats.push({
+                    id,
+                    username: player.username || id.substring(0, 8),
+                    kills: player.kills || 0,
+                    deaths: player.deaths || 0,
+                    damage: player.damageDealt || 0,
+                    teamId: player.teamId
+                });
+            }
+        });
+        
+        // Send data to React UI via GameStore
+        const { gameStore } = require('../ui/GameStore');
+        gameStore.setGameEnded(true, winner, playerStats);
+    }
+
+    showDamageNumber(x: number, y: number, damage: number) {
+        const damageText = this.add.text(x, y, `-${damage}`, {
+            fontSize: '18px',
+            color: '#ff0000',
+            stroke: '#000000',
+            strokeThickness: 3,
+            fontStyle: 'bold'
+        }).setOrigin(0.5).setDepth(150);
+        
+        this.tweens.add({
+            targets: damageText,
+            y: y - 40,
+            alpha: 0,
+            duration: 800,
+            ease: 'Cubic.easeOut',
+            onComplete: () => damageText.destroy()
+        });
     }
 }
