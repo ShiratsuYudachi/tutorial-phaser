@@ -273,7 +273,8 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
         color: '#ffffff',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        padding: '20px'
+        padding: '20px',
+        pointerEvents: 'auto'
     };
 
     const cardStyle: React.CSSProperties = {

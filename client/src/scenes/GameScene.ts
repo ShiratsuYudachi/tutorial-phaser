@@ -191,14 +191,14 @@ export class GameScene extends Phaser.Scene {
         // UI Initialization
         // this.createInventoryUI(); // Removed
         
-        // Preview elements
-        this.blockPreview = this.add.rectangle(0, 0, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, 0xffffff, 0.5);
-        this.blockPreview.setStrokeStyle(2, 0xffffff);
+        // Preview elements - Block placement preview
+        this.blockPreview = this.add.rectangle(0, 0, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, 0x00ff00, 0.5);
+        this.blockPreview.setStrokeStyle(4, 0x00ff00);
         this.blockPreview.setVisible(false);
-        this.blockPreview.setDepth(50);
+        this.blockPreview.setDepth(100);  // Very high depth to always be visible
         
         this.gridGraphics = this.add.graphics();
-        this.gridGraphics.setDepth(1);
+        this.gridGraphics.setDepth(45);  // Higher depth to be visible above blocks
         this.gridGraphics.setVisible(false);
         // Pre-draw grid to avoid performance issues on first use
         this.drawGrid();
@@ -503,7 +503,7 @@ export class GameScene extends Phaser.Scene {
                 break;
             }
             
-            case ItemType.FIREBALL_STAFF: {
+            case ItemType.FIREBALL: {
                 // Fireball - glowing circle with flame effect
                 const core = this.add.circle(0, 0, 6, 0xFF4500);
                 const glow1 = this.add.circle(0, 0, 8, 0xFF6347).setAlpha(0.6);
@@ -524,7 +524,7 @@ export class GameScene extends Phaser.Scene {
                 break;
             }
             
-            case ItemType.THROWING_KNIFE: {
+            case ItemType.DART: {
                 // Dart/Knife - diamond shape
                 const blade = this.add.triangle(6, 0, 0, -3, 0, 3, 8, 0, 0xC0C0C0);
                 const handle = this.add.rectangle(-2, 0, 6, 2, 0x654321);
@@ -615,6 +615,15 @@ export class GameScene extends Phaser.Scene {
         if (this.room.state.gamePhase === 'ended' && this.lastGamePhase !== 'ended') {
             this.showEndGame();
         }
+        
+        // Check for game restart (from ended to building)
+        if (this.lastGamePhase === 'ended' && this.room.state.gamePhase === 'building') {
+            console.log('Game restarted! Hiding end game screen.');
+            const { gameStore } = require('../ui/GameStore');
+            gameStore.setGameEnded(false);
+            gameStore.clearKillFeed();
+        }
+        
         this.lastGamePhase = this.room.state.gamePhase;
 
         this.elapsedTime += delta;
@@ -647,27 +656,39 @@ export class GameScene extends Phaser.Scene {
             }
         }
 
-        // UI Update & Preview
+        // UI Update & Preview - Block placement preview (runs every frame)
         const player = this.room.state.entities.get(this.currentPlayerId) as Player;
-        if (player) {
-            // this.updateInventoryUI(player); // Removed
-            
+        if (player && player.inventory) {
             // Determine if we should show block preview
             const selectedSlotIndex = player.selectedSlot;
-            const selectedItem = player.inventory[selectedSlotIndex];
+            // Convert ArraySchema to array for proper access
+            const inventoryArray = Array.from(player.inventory);
+            const selectedItem = inventoryArray[selectedSlotIndex];
             // Check if item is valid and not empty
             const isValidItem = selectedItem && selectedItem.itemId && selectedItem.itemId !== ItemType.EMPTY;
-            const itemDef = isValidItem ? ITEM_DEFINITIONS[selectedItem.itemId] : null;
+            const isBlockItem = isValidItem && isBlock(selectedItem.itemId as ItemType);
             
-            if (isValidItem && isBlock(selectedItem.itemId as ItemType)) {
-                 // Block Preview Logic
-                 // Draw grid only once when first needed
+            // Debug: log once per second
+            if (Math.floor(time / 1000) !== Math.floor((time - delta) / 1000)) {
+                console.log('Block Preview Debug:', {
+                    selectedSlotIndex,
+                    selectedItemId: selectedItem?.itemId,
+                    selectedItemCount: selectedItem?.count,
+                    isValidItem,
+                    isBlockItem,
+                    inventoryLength: inventoryArray.length
+                });
+            }
+            
+            if (isBlockItem) {
+                 // Block Preview Logic - Always show grid when holding blocks
                  if (!this.isGridDrawn) {
                      this.drawGrid();
                      this.isGridDrawn = true;
                  }
                  this.gridGraphics.setVisible(true);
                  
+                 // Get mouse position in world coordinates
                  const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
                  const gridSize = GAME_CONFIG.gridSize;
                  const gridX = Math.round(worldPoint.x / gridSize) * gridSize;
@@ -679,15 +700,30 @@ export class GameScene extends Phaser.Scene {
                      const distance = Math.sqrt((gridX - playerVisual.x) ** 2 + (gridY - playerVisual.y) ** 2);
                      const inRange = distance <= GAME_CONFIG.maxPlaceRange;
                      
+                     // Check if position is already occupied by another block
+                     let isOccupied = false;
+                     this.room.state.entities.forEach((entity: any) => {
+                         if (entity.type === 'block') {
+                             const dx = Math.abs(entity.x - gridX);
+                             const dy = Math.abs(entity.y - gridY);
+                             if (dx < gridSize / 2 && dy < gridSize / 2) {
+                                 isOccupied = true;
+                             }
+                         }
+                     });
+                     
+                     // Update preview position
                      this.blockPreview.setPosition(gridX, gridY);
                      const blockColor = ITEM_DEFINITIONS[selectedItem.itemId]?.color || 0xffffff;
                      
-                     if (inRange && selectedItem.count > 0) {
-                         this.blockPreview.setFillStyle(blockColor, 0.5);
-                         this.blockPreview.setStrokeStyle(2, 0x00ff00);
+                     // Green = can place, Red = cannot place
+                     const canPlace = inRange && selectedItem.count > 0 && !isOccupied;
+                     if (canPlace) {
+                         this.blockPreview.setFillStyle(blockColor, 0.6);
+                         this.blockPreview.setStrokeStyle(4, 0x00ff00);
                      } else {
-                         this.blockPreview.setFillStyle(blockColor, 0.3);
-                         this.blockPreview.setStrokeStyle(2, 0xff0000);
+                         this.blockPreview.setFillStyle(0xff0000, 0.4);
+                         this.blockPreview.setStrokeStyle(4, 0xff0000);
                      }
                      this.blockPreview.setVisible(true);
                  }
@@ -695,12 +731,16 @@ export class GameScene extends Phaser.Scene {
                  this.gridGraphics.setVisible(false);
                  this.blockPreview.setVisible(false);
             }
+        } else {
+            // No player or inventory, hide preview
+            this.gridGraphics.setVisible(false);
+            this.blockPreview.setVisible(false);
         }
     }
     
     drawGrid() {
         this.gridGraphics.clear();
-        this.gridGraphics.lineStyle(1, 0x888888, 0.3);
+        this.gridGraphics.lineStyle(1, 0xffffff, 0.2);  // More visible white lines
         
         const gridSize = GAME_CONFIG.gridSize;
         const mapWidth = GAME_CONFIG.mapWidth;

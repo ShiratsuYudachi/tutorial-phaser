@@ -230,6 +230,7 @@ export class GameRoom extends Room<GameState> {
             console.log('  Client sessionId:', client.sessionId);
             console.log('  Current gamePhase:', this.state.gamePhase);
             console.log('  Current rematchReady:', Array.from(this.state.rematchReady.entries()));
+            console.log('  Current rematchCountdown:', this.state.rematchCountdown);
             
             if (this.state.gamePhase !== 'ended') {
                 console.log(`  ERROR: Game not ended, ignoring ready from ${client.sessionId}`);
@@ -243,11 +244,12 @@ export class GameRoom extends Room<GameState> {
 
             // Check if all players are ready
             const allReady = this.checkAllPlayersReady();
-            console.log('  All ready?', allReady);
+            console.log('  All ready result:', allReady);
             
-            if (allReady) {
-                console.log('  Starting countdown from 3...');
+            if (allReady && this.state.rematchCountdown <= 0) {
+                console.log('  ★★★ Starting countdown from 3... ★★★');
                 this.state.rematchCountdown = 3;
+                console.log('  rematchCountdown set to:', this.state.rematchCountdown);
             }
         });
 
@@ -450,8 +452,16 @@ export class GameRoom extends Room<GameState> {
         
         // 0.5. Handle Rematch Countdown
         if (this.state.rematchCountdown > 0) {
+            const oldCountdown = this.state.rematchCountdown;
             this.state.rematchCountdown -= deltaTime / 1000; // Convert to seconds
+            
+            // Log every second
+            if (Math.floor(oldCountdown) !== Math.floor(this.state.rematchCountdown)) {
+                console.log(`Rematch countdown: ${Math.ceil(this.state.rematchCountdown)}...`);
+            }
+            
             if (this.state.rematchCountdown <= 0) {
+                console.log('★★★ Countdown finished! Resetting game... ★★★');
                 this.state.rematchCountdown = 0;
                 this.resetGame();
                 return; // Skip this tick after reset
@@ -1252,24 +1262,42 @@ export class GameRoom extends Room<GameState> {
     }
 
     checkAllPlayersReady(): boolean {
-        // Get all active session IDs
-        const activeSessions = Array.from(this.clients.keys()).map(client => client.sessionId);
+        // Get all active session IDs from connected clients
+        const activeSessions: string[] = [];
+        
+        // In Colyseus, this.clients is an array-like structure
+        for (const client of this.clients) {
+            activeSessions.push(client.sessionId);
+        }
         
         console.log('checkAllPlayersReady:');
         console.log('  Active sessions:', activeSessions);
-        console.log('  Ready map:', Array.from(this.state.rematchReady.entries()));
+        console.log('  Ready map entries:', Array.from(this.state.rematchReady.entries()));
+        console.log('  Number of active sessions:', activeSessions.length);
+        
+        // Need at least one player
+        if (activeSessions.length === 0) {
+            console.log('  No active sessions');
+            return false;
+        }
         
         // Check if all players are ready
+        let allReady = true;
         for (const sessionId of activeSessions) {
-            if (!this.state.rematchReady.get(sessionId)) {
-                console.log(`  Session ${sessionId} is NOT ready`);
-                return false;
+            const isReady = this.state.rematchReady.get(sessionId);
+            console.log(`  Checking ${sessionId}: ready = ${isReady}`);
+            if (!isReady) {
+                allReady = false;
             }
         }
         
-        console.log('  All players ready!');
-        // Need at least one player
-        return activeSessions.length > 0;
+        if (allReady) {
+            console.log('  ✓ All players ready!');
+        } else {
+            console.log('  ✗ Not all players ready');
+        }
+        
+        return allReady;
     }
 
     resetGame() {
@@ -1296,6 +1324,14 @@ export class GameRoom extends Room<GameState> {
         // Clear entities
         this.state.entities.clear();
         
+        // Helper to create inventory item
+        const createItem = (id: string, count: number) => {
+            const item = new InventoryItem();
+            item.itemId = id;
+            item.count = count;
+            return item;
+        };
+        
         // Re-add players with reset stats
         playersToKeep.forEach((player, id) => {
             player.hp = 100;
@@ -1307,25 +1343,33 @@ export class GameRoom extends Room<GameState> {
             player.damageDealt = 0;
             player.lastShootTime = 0;
             
-            // Clear inventory
+            // Clear inventory and give initial items
             player.inventory.clear();
-            for (let i = 0; i < INVENTORY_SIZE; i++) {
-                const item = new InventoryItem();
-                item.itemId = ItemType.EMPTY;
-                item.count = 0;
-                player.inventory.push(item);
+            player.inventory.push(createItem(ItemType.BOW, 1));
+            player.inventory.push(createItem(ItemType.FIREBALL, 1));
+            player.inventory.push(createItem(ItemType.DART, 1));
+            player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
+            player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
+            player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
+            player.inventory.push(createItem(ItemType.GOLD_INGOT, 10));
+            
+            // Fill remaining slots with empty items
+            while (player.inventory.length < INVENTORY_SIZE) {
+                player.inventory.push(createItem(ItemType.EMPTY, 0));
             }
             player.selectedSlot = 0;
             
             // Reset position to spawn
-            const spawnPos = player.teamId === TeamType.RED ? GAME_CONFIG.redSpawn : GAME_CONFIG.blueSpawn;
-            player.x = spawnPos.x;
+            const spawnPos = player.teamId === TeamType.RED ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
+            // Get character index from id (format: sessionId_1 or sessionId_2)
+            const charIndex = parseInt(id.split('_')[1]) || 1;
+            player.x = spawnPos.x + (charIndex - 1) * 50;
             player.y = spawnPos.y;
             
             // Reset physics body
             const agent = this.agents.get(id);
             if (agent) {
-                Matter.Body.setPosition(agent.body, { x: spawnPos.x, y: spawnPos.y });
+                Matter.Body.setPosition(agent.body, { x: player.x, y: player.y });
                 Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
             }
             
@@ -1344,13 +1388,9 @@ export class GameRoom extends Room<GameState> {
         });
         this.blockBodies.clear();
 
-        // Reset beds
-        this.state.entities.forEach((entity, id) => {
-            if (entity.type === EntityType.BED) {
-                const bed = entity as Bed;
-                bed.hp = bed.maxHP;
-            }
-        });
+        // Recreate beds (old ones were cleared with entities)
+        this.createBed(TeamType.RED, GAME_CONFIG.redBedPos.x, GAME_CONFIG.redBedPos.y);
+        this.createBed(TeamType.BLUE, GAME_CONFIG.blueBedPos.x, GAME_CONFIG.blueBedPos.y);
 
         console.log('Game reset complete!');
     }

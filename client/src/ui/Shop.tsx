@@ -69,7 +69,8 @@ export const Shop: React.FC = () => {
             width: '800px',
             maxHeight: '80vh',
             overflow: 'auto',
-            border: '2px solid rgba(255, 215, 0, 0.3)'
+            border: '2px solid rgba(255, 215, 0, 0.3)',
+            pointerEvents: 'auto'
         }}>
             {/* Header */}
             <div style={{
