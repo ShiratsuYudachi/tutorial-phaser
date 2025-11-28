@@ -43,13 +43,6 @@ class GameStore {
     rematchCountdown: number = 0;
     mySessionId: string = '';
 
-    // Chat state
-    chatMessages: Array<{ sender: string; text: string; teamId: string }> = [];
-    isChatOpen: boolean = false;
-
-    // Notification state
-    notifications: Array<{ id: string; text: string; color: string }> = [];
-
     // Singleton instance
     static instance = new GameStore();
 
@@ -120,41 +113,40 @@ class GameStore {
         
         console.log("GameStore: setting up listeners");
         
+        // Use the new getStateCallbacks API for proper state change tracking
+        const $ = getStateCallbacks(this.room);
+        
         // Listen for any state change to notify UI
         this.room.onStateChange((state) => {
-            // Sync countdown
-            if (state.rematchCountdown !== undefined && state.rematchCountdown !== this.rematchCountdown) {
-                this.rematchCountdown = state.rematchCountdown;
-            }
             this.notify();
         });
 
         // Helper to setup player listeners
         const setupPlayerListeners = (player: any, id: string) => {
              // Listen to property changes
-             player.onChange = () => {
+             $(player).onChange(() => {
                  if (player.isActive && this.currentPlayerId !== id) {
                      this.currentPlayerId = id;
                      this.notify();
                  }
                  console.log("GameStore: player changed");
                  this.notify();
-             };
+             });
 
-             // Listen to inventory changes
+             // Listen to inventory changes using $ callbacks
              if (player.inventory) {
-                 player.inventory.onAdd = () => {
+                 $(player.inventory).onAdd(() => {
                      console.log("GameStore: inventory item added");
                      this.notify();
-                 };
-                 player.inventory.onRemove = () => {
+                 });
+                 $(player.inventory).onRemove(() => {
                      console.log("GameStore: inventory item removed");
                      this.notify();
-                 };
-                 player.inventory.onChange = () => {
+                 });
+                 $(player.inventory).onChange(() => {
                      console.log("GameStore: inventory changed");
                      this.notify();
-                 };
+                 });
              }
         };
 
@@ -171,7 +163,7 @@ class GameStore {
         });
 
         // 2. Listen for new entities
-        (this.room.state.entities as any).onAdd = (entity: any, id: string) => {
+        $(this.room.state).entities.onAdd((entity: any, id: string) => {
             console.log("GameStore: entity added", id);
             
             if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
@@ -181,7 +173,7 @@ class GameStore {
                      this.notify();
                  }
             }
-        };
+        });
         
         // 3. Sync existing rematchReady values first
         const state = this.room.state as any;
@@ -192,40 +184,30 @@ class GameStore {
             });
         }
         
-        // 4. Listen for rematch state changes
-        if (state.rematchReady) {
-            state.rematchReady.onAdd = (value: boolean, sessionId: string) => {
-                console.log('GameStore: rematchReady.onAdd', sessionId, '=', value);
-                this.rematchReady.set(sessionId, value);
-                this.notify();
-            };
-            
-            state.rematchReady.onChange = (value: boolean, sessionId: string) => {
-                console.log('GameStore: rematchReady.onChange', sessionId, '=', value);
-                this.rematchReady.set(sessionId, value);
-                this.notify();
-            };
-            
-            state.rematchReady.onRemove = (value: boolean, sessionId: string) => {
-                console.log('GameStore: rematchReady.onRemove', sessionId);
-                this.rematchReady.delete(sessionId);
-                this.notify();
-            };
-        }
-
-        // 5. Listen for chat messages
-        this.room.onMessage("chat_message", (message: { sender: string; text: string; teamId: string }) => {
-            console.log("GameStore: chat message received", message);
-            this.chatMessages.push(message);
-            if (this.chatMessages.length > 50) {
-                this.chatMessages.shift();
-            }
+        // 4. Listen for rematch state changes using the correct $ callbacks API
+        $(this.room.state).rematchReady.onAdd((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onAdd', sessionId, '=', value);
+            this.rematchReady.set(sessionId, value);
             this.notify();
         });
-
-        // 6. Listen for notifications
-        this.room.onMessage("notification", (data: { text: string; color: string }) => {
-            this.addNotification(data.text, data.color);
+        
+        $(this.room.state).rematchReady.onChange((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onChange', sessionId, '=', value);
+            this.rematchReady.set(sessionId, value);
+            this.notify();
+        });
+        
+        $(this.room.state).rematchReady.onRemove((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onRemove', sessionId);
+            this.rematchReady.delete(sessionId);
+            this.notify();
+        });
+        
+        // 5. Listen for countdown changes
+        $(this.room.state).listen("rematchCountdown", (value: number) => {
+            console.log('GameStore: rematchCountdown changed', this.rematchCountdown, '->', value);
+            this.rematchCountdown = value;
+            this.notify();
         });
     }
 
@@ -351,30 +333,6 @@ class GameStore {
         } else {
             console.error('  ❌ ERROR: No room available!');
         }
-    }
-
-    // Chat methods
-    toggleChat(isOpen?: boolean) {
-        this.isChatOpen = isOpen !== undefined ? isOpen : !this.isChatOpen;
-        this.notify();
-    }
-
-    sendChatMessage(text: string) {
-        if (this.room) {
-            this.room.send("chat_message", { text });
-        }
-    }
-
-    // Notification methods
-    addNotification(text: string, color: string = '#ffffff') {
-        const id = Math.random().toString(36).substr(2, 9);
-        this.notifications.push({ id, text, color });
-        this.notify();
-        
-        setTimeout(() => {
-            this.notifications = this.notifications.filter(n => n.id !== id);
-            this.notify();
-        }, 3000);
     }
 }
 
@@ -504,45 +462,4 @@ export function useRematchState() {
     }, []);
 
     return state;
-}
-
-export function useChatState() {
-    const [isOpen, setIsOpen] = useState(gameStore.isChatOpen);
-    const [messages, setMessages] = useState(gameStore.chatMessages);
-
-    useEffect(() => {
-        const update = () => {
-            setIsOpen(gameStore.isChatOpen);
-            setMessages([...gameStore.chatMessages]);
-        };
-        return gameStore.subscribe(update);
-    }, []);
-
-    return { isOpen, messages };
-}
-
-export function useNotificationState() {
-    const [notifications, setNotifications] = useState(gameStore.notifications);
-
-    useEffect(() => {
-        const update = () => {
-            setNotifications([...gameStore.notifications]);
-        };
-        return gameStore.subscribe(update);
-    }, []);
-
-    return notifications;
-}
-
-export function useNotifications() {
-    const [notifications, setNotifications] = useState(gameStore.notifications);
-
-    useEffect(() => {
-        const update = () => {
-            setNotifications([...gameStore.notifications]);
-        };
-        return gameStore.subscribe(update);
-    }, []);
-
-    return notifications;
 }

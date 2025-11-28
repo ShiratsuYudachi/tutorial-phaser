@@ -1,7 +1,7 @@
 import { Behavior } from "./Behavior";
 import { Player, InputData } from "../shared/Schema";
 import { applyInput } from "../shared/GameLogic";
-import { WEAPON_CONFIG, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock } from "../shared/Constants";
+import { WEAPON_CONFIG, MELEE_CONFIG, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, AmmoItem, isAmmo, isMelee, isBlock, AMMO_TO_WEAPON } from "../shared/Constants";
 
 export class PlayerControlBehavior extends Behavior<Player> {
     update(deltaTime: number) {
@@ -26,19 +26,47 @@ export class PlayerControlBehavior extends Behavior<Player> {
                 this.onDropItem(sessionId, player.selectedSlot, input.mouseX, input.mouseY);
             }
 
-            // 3. Handle Item Usage (Shoot or Place)
-            // Only if mouse is down
+            // 3. Handle Right Click - Melee Attack (always available)
+            if (input.isRightDown) {
+                const now = Date.now();
+                const meleeConfig = MELEE_CONFIG[ItemType.SWORD];
+                
+                if (now - player.lastMeleeTime > meleeConfig.attackRate) {
+                    // Calculate melee attack angle
+                    const meleeAngle = Math.atan2(
+                        input.mouseY - this.agent.body.position.y,
+                        input.mouseX - this.agent.body.position.x
+                    );
+                    
+                    // Trigger melee attack
+                    if (this.onMeleeAttack) {
+                        const sessionId = (this.agent as any).sessionId;
+                        this.onMeleeAttack(sessionId, this.agent.body.position, meleeAngle);
+                    }
+                    
+                    player.lastMeleeTime = now;
+                    player.isMeleeAttacking = true;
+                    player.meleeAngle = meleeAngle;
+                    
+                    // Reset melee animation after a short delay
+                    setTimeout(() => {
+                        player.isMeleeAttacking = false;
+                    }, 200);
+                }
+            }
+
+            // 4. Handle Left Click - Ranged Attack or Place Block
             if (input.isDown) {
                 // Check what's in the current slot
                 const slotItem = player.inventory.at(player.selectedSlot);
                 if (slotItem && slotItem.itemId && slotItem.count > 0) {
                     const itemId = slotItem.itemId as ItemType;
                     
-                    if (isWeapon(itemId)) {
-                        // --- WEAPON LOGIC ---
-                        // itemId is now narrowed to WeaponId by type guard
+                    if (isAmmo(itemId)) {
+                        // --- AMMO/RANGED ATTACK LOGIC ---
+                        const weaponType = AMMO_TO_WEAPON[itemId];
                         const now = Date.now();
-                        const weaponConfig = WEAPON_CONFIG[itemId];
+                        const weaponConfig = WEAPON_CONFIG[weaponType];
                         const fireRate = weaponConfig ? weaponConfig.fireRate : 500;
 
                         if (now - player.lastShootTime > fireRate) {
@@ -48,12 +76,18 @@ export class PlayerControlBehavior extends Behavior<Player> {
                                 input.mouseX - this.agent.body.position.x
                             );
                             
-                            this.spawnBullet(player, this.agent.body.position, aimAngle, itemId);
+                            // Consume ammo
+                            slotItem.count -= 1;
+                            if (slotItem.count <= 0) {
+                                slotItem.itemId = ItemType.EMPTY;
+                                slotItem.count = 0;
+                            }
+                            
+                            this.spawnBullet(player, this.agent.body.position, aimAngle, weaponType);
                             player.lastShootTime = now;
                         }
                     } else if (isBlock(itemId)) {
                         // --- BLOCK LOGIC ---
-                        // itemId is now narrowed to BlockId by type guard
                         if (this.onPlaceBlock) {
                             const sessionId = (this.agent as any).sessionId;
                             this.onPlaceBlock(
@@ -64,6 +98,7 @@ export class PlayerControlBehavior extends Behavior<Player> {
                             );
                         }
                     }
+                    // Note: Melee weapons (SWORD) and other items do nothing on left click
                 }
             }
         }
@@ -79,4 +114,5 @@ export class PlayerControlBehavior extends Behavior<Player> {
     onShoot: (ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) => void;
     onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockItem) => void;
     onDropItem: (playerId: string, slotIndex: number, mouseX: number, mouseY: number) => void;
+    onMeleeAttack: (playerId: string, position: { x: number, y: number }, angle: number) => void;
 }

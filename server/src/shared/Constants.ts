@@ -7,28 +7,44 @@ export enum ItemType {
     // 货币
     GOLD_INGOT = 'gold_ingot',
     
-    // 武器
-    BOW = 'bow',
-    FIREBALL = 'fireball',
-    DART = 'dart',
+    // 近战武器（永久）
+    SWORD = 'sword',
+    
+    // 弹药（消耗品）
+    ARROW = 'arrow',
+    FIREBALL_AMMO = 'fireball_ammo',
+    DART_AMMO = 'dart_ammo',
     
     // 方块
     WOOD = 'wood',
     STONE = 'stone',
-    DIAMOND = 'diamond'
+    DIAMOND = 'diamond',
+    
+    // 旧的武器类型（保留用于兼容，实际不再作为物品）
+    BOW = 'bow',
+    FIREBALL = 'fireball',
+    DART = 'dart'
 }
 
 // 精确的类型别名
-export type WeaponItem = ItemType.BOW | ItemType.FIREBALL | ItemType.DART;
+export type AmmoItem = ItemType.ARROW | ItemType.FIREBALL_AMMO | ItemType.DART_AMMO;
+export type MeleeItem = ItemType.SWORD;
 export type BlockItem = ItemType.WOOD | ItemType.STONE | ItemType.DIAMOND;
 export type CurrencyItem = ItemType.GOLD_INGOT;
 export type EmptyItem = ItemType.EMPTY;
+// 保留旧类型用于子弹类型标识
+export type WeaponItem = ItemType.BOW | ItemType.FIREBALL | ItemType.DART;
 
-// 武器集合
-export const WEAPONS = new Set<WeaponItem>([
-    ItemType.BOW,
-    ItemType.FIREBALL,
-    ItemType.DART
+// 弹药集合
+export const AMMO = new Set<AmmoItem>([
+    ItemType.ARROW,
+    ItemType.FIREBALL_AMMO,
+    ItemType.DART_AMMO
+]);
+
+// 近战武器集合
+export const MELEE = new Set<MeleeItem>([
+    ItemType.SWORD
 ]);
 
 // 方块集合
@@ -43,17 +59,38 @@ export const CURRENCIES = new Set<CurrencyItem>([
     ItemType.GOLD_INGOT
 ]);
 
+// 弹药到武器类型的映射（用于射击时确定子弹类型）
+export const AMMO_TO_WEAPON: Record<AmmoItem, WeaponItem> = {
+    [ItemType.ARROW]: ItemType.BOW,
+    [ItemType.FIREBALL_AMMO]: ItemType.FIREBALL,
+    [ItemType.DART_AMMO]: ItemType.DART
+};
+
 // 辅助函数（带类型守卫）
-export const isWeapon = (itemId: ItemType): itemId is WeaponItem => WEAPONS.has(itemId as WeaponItem);
+export const isAmmo = (itemId: ItemType): itemId is AmmoItem => AMMO.has(itemId as AmmoItem);
+export const isMelee = (itemId: ItemType): itemId is MeleeItem => MELEE.has(itemId as MeleeItem);
 export const isBlock = (itemId: ItemType): itemId is BlockItem => BLOCKS.has(itemId as BlockItem);
 export const isCurrency = (itemId: ItemType): itemId is CurrencyItem => CURRENCIES.has(itemId as CurrencyItem);
 export const isEmpty = (itemId: ItemType): itemId is EmptyItem => itemId === ItemType.EMPTY;
+// 保留旧函数用于兼容
+export const isWeapon = (itemId: ItemType): itemId is WeaponItem => 
+    itemId === ItemType.BOW || itemId === ItemType.FIREBALL || itemId === ItemType.DART;
 
 // 向后兼容的类型别名（可以逐步移除）
 export const WeaponType = {
     BOW: ItemType.BOW,
     FIREBALL: ItemType.FIREBALL,
     DART: ItemType.DART
+} as const;
+
+export const AmmoType = {
+    ARROW: ItemType.ARROW,
+    FIREBALL_AMMO: ItemType.FIREBALL_AMMO,
+    DART_AMMO: ItemType.DART_AMMO
+} as const;
+
+export const MeleeType = {
+    SWORD: ItemType.SWORD
 } as const;
 
 export const BlockType = {
@@ -112,18 +149,25 @@ export const ITEM_DEFINITIONS: Record<ItemType, {
         maxStack: 64, name: 'Gold Ingot', color: 0xFFD700, icon: 'game-icons:gold-bar',
         droppedVisual: { shape: 'hexagon', size: 14, glowSize: 20 }
     },
-    [ItemType.BOW]: { 
-        maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow',
+    // 近战武器
+    [ItemType.SWORD]: { 
+        maxStack: 1, name: 'Sword', color: 0xC0C0C0, icon: 'game-icons:broadsword',
         droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
     },
-    [ItemType.FIREBALL]: { 
-        maxStack: 1, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball',
-        droppedVisual: { shape: 'circle', size: 14, glowSize: 24 }
-    },
-    [ItemType.DART]: { 
-        maxStack: 1, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers',
+    // 弹药
+    [ItemType.ARROW]: { 
+        maxStack: 64, name: 'Arrow', color: 0x8B4513, icon: 'game-icons:arrow-cluster',
         droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
     },
+    [ItemType.FIREBALL_AMMO]: { 
+        maxStack: 32, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball',
+        droppedVisual: { shape: 'circle', size: 14, glowSize: 24 }
+    },
+    [ItemType.DART_AMMO]: { 
+        maxStack: 64, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers',
+        droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
+    },
+    // 方块
     [ItemType.WOOD]: { 
         maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'game-icons:wood-pile',
         droppedVisual: { shape: 'square', size: 14, glowSize: 20 }
@@ -135,52 +179,77 @@ export const ITEM_DEFINITIONS: Record<ItemType, {
     [ItemType.DIAMOND]: { 
         maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:diamond',
         droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
+    },
+    // 旧武器类型（保留用于兼容，实际显示为弹药）
+    [ItemType.BOW]: { 
+        maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow',
+        droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
+    },
+    [ItemType.FIREBALL]: { 
+        maxStack: 1, name: 'Fireball Staff', color: 0xff4500, icon: 'game-icons:fireball',
+        droppedVisual: { shape: 'circle', size: 14, glowSize: 24 }
+    },
+    [ItemType.DART]: { 
+        maxStack: 1, name: 'Dart Thrower', color: 0x00ffff, icon: 'game-icons:thrown-daggers',
+        droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
     }
 };
 
-// 武器配置
-export const WEAPON_CONFIG: Record<ItemType, { damage: number, fireRate: number, bulletSpeed: number, color: number, name: string }> = {
+// 远程武器配置（子弹类型）
+export const WEAPON_CONFIG: Record<WeaponItem, { damage: number, fireRate: number, bulletSpeed: number, color: number, name: string }> = {
     [ItemType.BOW]: {
-        damage: 20,
-        fireRate: 500,  // ms
+        damage: 15,       // 降低伤害，鼓励更多交战
+        fireRate: 600,    // ms
         bulletSpeed: 10,
-        color: 0xffff00, // 黄色
+        color: 0xffff00,
         name: '弓箭'
     },
     [ItemType.FIREBALL]: {
-        damage: 35,
-        fireRate: 1000,  // ms (更慢)
-        bulletSpeed: 8,
-        color: 0xff4500, // 橙红色
+        damage: 30,       // 高伤害
+        fireRate: 1200,   // ms (更慢)
+        bulletSpeed: 7,
+        color: 0xff4500,
         name: '火球'
     },
     [ItemType.DART]: {
-        damage: 10,
-        fireRate: 200,   // ms (更快)
-        bulletSpeed: 12,
-        color: 0x00ffff, // 青色
+        damage: 8,        // 低伤害
+        fireRate: 180,    // ms (更快)
+        bulletSpeed: 14,
+        color: 0x00ffff,
         name: '飞镖'
     }
-} as any; // Type assertion to allow partial record
+};
+
+// 近战武器配置
+export const MELEE_CONFIG = {
+    [ItemType.SWORD]: {
+        damage: 20,           // 近战伤害
+        attackRate: 450,      // 攻击间隔 (ms)
+        range: 55,            // 攻击范围 (像素)
+        knockback: 12,        // 击退力度
+        color: 0xC0C0C0,
+        name: '铁剑'
+    }
+};
 
 // 方块配置
-export const BLOCK_CONFIG: Record<ItemType, { maxHP: number, color: number, name: string }> = {
+export const BLOCK_CONFIG: Record<BlockItem, { maxHP: number, color: number, name: string }> = {
     [ItemType.WOOD]: {
-        maxHP: 50,
-        color: 0x8B4513, // 棕色
+        maxHP: 40,        // 降低耐久
+        color: 0x8B4513,
         name: '木制方块'
     },
     [ItemType.STONE]: {
-        maxHP: 100,
-        color: 0x808080, // 灰色
+        maxHP: 80,        // 降低耐久
+        color: 0x808080,
         name: '石制方块'
     },
     [ItemType.DIAMOND]: {
-        maxHP: 200,
-        color: 0x00CED1, // 钻石蓝
+        maxHP: 150,       // 降低耐久
+        color: 0x00CED1,
         name: '钻石方块'
     }
-} as any; // Type assertion to allow partial record
+};
 
 export const GAME_CONFIG = {
     mapWidth: 800,
@@ -211,10 +280,20 @@ export const GAME_CONFIG = {
     gridSize: 40,           // 网格大小
     maxPlaceRange: 150,     // 最大放置距离
     initialBlocks: {        // 初始方块数量
-        [ItemType.WOOD]: 20,
-        [ItemType.STONE]: 10,
-        [ItemType.DIAMOND]: 5
+        [ItemType.WOOD]: 12,
+        [ItemType.STONE]: 6,
+        [ItemType.DIAMOND]: 2
     },
+    
+    // 初始弹药数量
+    initialAmmo: {
+        [ItemType.ARROW]: 20,
+        [ItemType.FIREBALL_AMMO]: 0,
+        [ItemType.DART_AMMO]: 0
+    },
+    
+    // 初始金币
+    initialGold: 6,
     
     // 游戏阶段配置（4分钟总时长）
     buildingPhaseDuration: 30000,    // 30秒建造期 (ms)
@@ -249,35 +328,56 @@ export interface ShopTrade {
 }
 
 export const SHOP_TRADES: ShopTrade[] = [
-    // 武器交易
+    // 弹药交易 - 量大便宜
     {
-        id: 'buy_bow',
+        id: 'buy_arrow_16',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 1 },
+        reward: { itemType: ItemType.ARROW, count: 16 },
+        name: 'Buy Arrows (16x)',
+        description: 'Basic ranged ammunition'
+    },
+    {
+        id: 'buy_arrow_48',
         cost: { itemType: ItemType.GOLD_INGOT, count: 2 },
-        reward: { itemType: ItemType.BOW, count: 1 },
-        name: 'Buy Bow',
-        description: 'A reliable ranged weapon'
+        reward: { itemType: ItemType.ARROW, count: 48 },
+        name: 'Buy Arrows (48x)',
+        description: 'Bulk arrow pack'
     },
     {
-        id: 'buy_fireball',
-        cost: { itemType: ItemType.GOLD_INGOT, count: 5 },
-        reward: { itemType: ItemType.FIREBALL, count: 1 },
-        name: 'Buy Fireball',
-        description: 'Powerful but slow projectile'
+        id: 'buy_fireball_6',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 2 },
+        reward: { itemType: ItemType.FIREBALL_AMMO, count: 6 },
+        name: 'Buy Fireballs (6x)',
+        description: 'High damage projectiles'
     },
     {
-        id: 'buy_dart',
-        cost: { itemType: ItemType.GOLD_INGOT, count: 3 },
-        reward: { itemType: ItemType.DART, count: 1 },
-        name: 'Buy Dart',
-        description: 'Fast and cheap weapon'
+        id: 'buy_fireball_16',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 4 },
+        reward: { itemType: ItemType.FIREBALL_AMMO, count: 16 },
+        name: 'Buy Fireballs (16x)',
+        description: 'Bulk fireball pack'
+    },
+    {
+        id: 'buy_dart_24',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 1 },
+        reward: { itemType: ItemType.DART_AMMO, count: 24 },
+        name: 'Buy Darts (24x)',
+        description: 'Fast throwing knives'
+    },
+    {
+        id: 'buy_dart_64',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 2 },
+        reward: { itemType: ItemType.DART_AMMO, count: 64 },
+        name: 'Buy Darts (64x)',
+        description: 'Bulk dart pack'
     },
     
-    // 方块交易
+    // 方块交易 - 便宜大量
     {
-        id: 'buy_wood_8',
+        id: 'buy_wood_10',
         cost: { itemType: ItemType.GOLD_INGOT, count: 1 },
-        reward: { itemType: ItemType.WOOD, count: 8 },
-        name: 'Buy Wood (8x)',
+        reward: { itemType: ItemType.WOOD, count: 10 },
+        name: 'Buy Wood (10x)',
         description: 'Basic building material'
     },
     {
@@ -311,11 +411,21 @@ export const DROPPED_ITEM_CONFIG = {
 
 // 资源生成器配置
 export const RESOURCE_GENERATOR_CONFIG = {
-    spawnInterval: 10000, // 10秒生成一次 (ms)
-    spawnRadius: 50, // 在周围多远生成
-    maxDropsNearby: 5, // 附近最多掉落物数量
-    generatorRadius: 20, // 生成器碰撞半径
-    generatorColor: 0x00ff00 // 生成器颜色
+    // 基地生成器配置
+    base: {
+        spawnInterval: 5000,  // 5秒生成一次
+        spawnRadius: 50,
+        maxDropsNearby: 8,
+    },
+    // 中央生成器配置
+    center: {
+        spawnInterval: 4000,  // 4秒生成一次（更快）
+        spawnRadius: 50,
+        maxDropsNearby: 10,
+    },
+    // 通用配置
+    generatorRadius: 20,
+    generatorColor: 0x00ff00
 };
 
 // 资源生成器生成表
@@ -326,13 +436,34 @@ export interface GeneratorLootTable {
 }
 
 export const GENERATOR_LOOT_TABLES: Record<string, GeneratorLootTable[]> = {
-    'gold_generator': [
-        { itemType: ItemType.GOLD_INGOT, count: { min: 1, max: 3 }, weight: 1 }
+    // 基地金矿（靠近床）
+    'base_gold_generator': [
+        { itemType: ItemType.GOLD_INGOT, count: { min: 3, max: 4 }, weight: 1 }
     ],
-    'resource_generator': [
-        { itemType: ItemType.WOOD, count: { min: 2, max: 5 }, weight: 3 },
+    // 中央金矿（地图中心，高产出）
+    'center_gold_generator': [
+        { itemType: ItemType.GOLD_INGOT, count: { min: 5, max: 7 }, weight: 1 }
+    ],
+    // 基地资源矿
+    'base_resource_generator': [
+        { itemType: ItemType.WOOD, count: { min: 3, max: 5 }, weight: 3 },
+        { itemType: ItemType.STONE, count: { min: 2, max: 3 }, weight: 2 },
+        { itemType: ItemType.DIAMOND, count: { min: 1, max: 1 }, weight: 1 }
+    ],
+    // 中央资源矿（更丰富）
+    'center_resource_generator': [
+        { itemType: ItemType.WOOD, count: { min: 4, max: 6 }, weight: 3 },
         { itemType: ItemType.STONE, count: { min: 2, max: 4 }, weight: 2 },
         { itemType: ItemType.DIAMOND, count: { min: 1, max: 2 }, weight: 1 }
+    ],
+    // 兼容旧配置
+    'gold_generator': [
+        { itemType: ItemType.GOLD_INGOT, count: { min: 3, max: 4 }, weight: 1 }
+    ],
+    'resource_generator': [
+        { itemType: ItemType.WOOD, count: { min: 3, max: 5 }, weight: 3 },
+        { itemType: ItemType.STONE, count: { min: 2, max: 3 }, weight: 2 },
+        { itemType: ItemType.DIAMOND, count: { min: 1, max: 1 }, weight: 1 }
     ]
 };
 

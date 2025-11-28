@@ -1,7 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem, DroppedItem, ResourceGenerator } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, MELEE_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, isAmmo, isMelee, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 import { AuthService } from "../services/AuthService";
@@ -83,103 +83,6 @@ export class GameRoom extends Room<GameState> {
                 char2.isActive = !char2.isActive;
                 console.log(`Player ${client.sessionId} switched character. Active: ${char1.isActive ? char1Id : char2Id}`);
             }
-        });
-
-        // Chat System
-        this.onMessage("chat_message", (client, data: { text: string }) => {
-            const activeCharacterId = this.getActiveCharacterId(client.sessionId);
-            if (!activeCharacterId) return;
-            
-            const player = this.state.entities.get(activeCharacterId) as Player;
-            if (!player) return;
-
-            const text = data.text.trim();
-            if (text.length === 0) return;
-
-            // Command Handling
-            if (text.startsWith('/')) {
-                const args = text.slice(1).split(' ');
-                const command = args[0].toLowerCase();
-
-                if (command === 'cheat') {
-                    // Enable cheat mode for both characters of this player
-                    const char1Id = `${client.sessionId}_1`;
-                    const char2Id = `${client.sessionId}_2`;
-                    
-                    [char1Id, char2Id].forEach(id => {
-                        const char = this.state.entities.get(id) as Player;
-                        if (char) {
-                            char.damageMultiplier = 100; // 100x damage
-                            
-                            // Give unlimited money (Gold and Diamond)
-                            // Find existing slots or add new ones
-                            const giveItem = (itemType: string, amount: number) => {
-                                let found = false;
-                                for (const item of char.inventory) {
-                                    if (item.itemId === itemType) {
-                                        item.count = amount;
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                                if (!found) {
-                                    // Find empty slot
-                                    for (const item of char.inventory) {
-                                        if (item.itemId === ItemType.EMPTY) {
-                                            item.itemId = itemType;
-                                            item.count = amount;
-                                            break;
-                                        }
-                                    }
-                                }
-                            };
-                            
-                            giveItem(ItemType.GOLD_INGOT, 9999);
-                            giveItem(ItemType.DIAMOND, 9999);
-                            giveItem(ItemType.FIREBALL, 9999); // Unlimited ammo too
-                        }
-                    });
-                    
-                    // Send private confirmation
-                    client.send("chat_message", {
-                        sender: "System",
-                        text: "Cheat mode enabled! (100x Damage, Unlimited Resources)",
-                        teamId: "system"
-                    });
-
-                    // Broadcast notification to teammates
-                    this.clients.forEach(otherClient => {
-                        const otherActiveId = this.getActiveCharacterId(otherClient.sessionId);
-                        if (otherActiveId) {
-                            const otherPlayer = this.state.entities.get(otherActiveId) as Player;
-                            // Send to teammates (including self)
-                            if (otherPlayer && otherPlayer.teamId === player.teamId) {
-                                otherClient.send("notification", {
-                                    text: `${player.username || "Player"} enabled CHEAT MODE!`,
-                                    color: "#ff0000"
-                                });
-                            }
-                        }
-                    });
-                }
-                return;
-            }
-
-            // Team Chat Logic
-            // Broadcast only to teammates
-            this.clients.forEach(otherClient => {
-                const otherActiveId = this.getActiveCharacterId(otherClient.sessionId);
-                if (otherActiveId) {
-                    const otherPlayer = this.state.entities.get(otherActiveId) as Player;
-                    if (otherPlayer && otherPlayer.teamId === player.teamId) {
-                        otherClient.send("chat_message", {
-                            sender: player.username || "Player",
-                            text: text,
-                            teamId: player.teamId
-                        });
-                    }
-                }
-            });
         });
 
         // Inventory Actions
@@ -350,9 +253,19 @@ export class GameRoom extends Room<GameState> {
             }
         });
 
-        // Create resource generators for testing
-        this.createResourceGenerator('gold_generator', 400, 150);
-        this.createResourceGenerator('resource_generator', 400, 450);
+        // Create resource generators
+        // 红队基地生成器（靠近红床 x=80）
+        this.createResourceGenerator('base_gold_generator', 120, 250, 'base');      // 红队金矿
+        this.createResourceGenerator('base_resource_generator', 120, 350, 'base');  // 红队资源矿
+        
+        // 蓝队基地生成器（靠近蓝床 x=720）
+        this.createResourceGenerator('base_gold_generator', 680, 250, 'base');      // 蓝队金矿
+        this.createResourceGenerator('base_resource_generator', 680, 350, 'base');  // 蓝队资源矿
+        
+        // 中央生成器（地图中心 x=400）- 高价值争夺点
+        this.createResourceGenerator('center_gold_generator', 400, 300, 'center');     // 中央金矿（最高产出）
+        this.createResourceGenerator('center_resource_generator', 400, 200, 'center'); // 中央资源矿上
+        this.createResourceGenerator('center_resource_generator', 400, 400, 'center'); // 中央资源矿下
 
         // Simulation Loop
         this.setSimulationInterval((deltaTime) => {
@@ -622,10 +535,7 @@ export class GameRoom extends Room<GameState> {
         bullet.x = position.x;
         bullet.y = position.y;
         bullet.ownerId = ownerId;
-        
-        // Apply damage multiplier from player
-        bullet.damage = weaponConfig.damage * (player.damageMultiplier || 1);
-        
+        bullet.damage = weaponConfig.damage;
         bullet.weaponType = weaponType;
 
         // 使用瞄准角度和武器速度
@@ -751,6 +661,119 @@ export class GameRoom extends Room<GameState> {
         // 移除实体
         this.state.entities.delete(blockId);
     }
+    
+    /**
+     * 执行近战攻击
+     */
+    performMeleeAttack(attackerId: string, position: { x: number, y: number }, angle: number) {
+        const attacker = this.state.entities.get(attackerId) as Player;
+        if (!attacker || attacker.isDead) return;
+        
+        const meleeConfig = MELEE_CONFIG[ItemType.SWORD];
+        const range = meleeConfig.range;
+        const damage = meleeConfig.damage;
+        const knockback = meleeConfig.knockback;
+        
+        // 计算攻击扇形区域（60度扇形）
+        const halfAngle = Math.PI / 6; // 30度
+        
+        // 查找范围内的目标
+        this.agents.forEach((agent, targetId) => {
+            if (targetId === attackerId) return; // 不攻击自己
+            
+            const target = agent.schema as Player;
+            if (!target || target.isDead) return;
+            
+            // 计算距离
+            const dx = agent.body.position.x - position.x;
+            const dy = agent.body.position.y - position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > range) return; // 超出范围
+            
+            // 计算目标角度
+            const targetAngle = Math.atan2(dy, dx);
+            
+            // 检查是否在攻击扇形内
+            let angleDiff = targetAngle - angle;
+            // 规范化角度差到 -PI 到 PI
+            while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+            
+            if (Math.abs(angleDiff) > halfAngle) return; // 不在扇形内
+            
+            // 命中！造成伤害
+            target.hp -= damage;
+            attacker.damageDealt += damage;
+            
+            console.log(`Melee hit! ${attackerId} -> ${targetId}, damage: ${damage}, remaining HP: ${target.hp}`);
+            
+            // 击退效果
+            const knockbackX = Math.cos(angle) * knockback;
+            const knockbackY = Math.sin(angle) * knockback;
+            Matter.Body.setVelocity(agent.body, { x: knockbackX, y: knockbackY });
+            
+            // 检查死亡
+            const died = this.checkPlayerDeath(targetId);
+            if (died) {
+                attacker.kills++;
+                this.addKillFeed(attackerId, targetId);
+            }
+        });
+        
+        // 近战也可以攻击床
+        this.state.entities.forEach((entity, entityId) => {
+            if (entity.type !== EntityType.BED) return;
+            
+            const bed = entity as Bed;
+            if (bed.hp <= 0) return;
+            if (bed.teamId === attacker.teamId) return; // 不攻击自己队的床
+            
+            // 计算距离
+            const dx = bed.x - position.x;
+            const dy = bed.y - position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > range + 30) return; // 床比较大，范围稍微宽松
+            
+            // 命中床
+            bed.hp -= damage;
+            console.log(`Melee hit bed ${bed.teamId}! HP: ${bed.hp}/${bed.maxHP}`);
+            
+            if (bed.hp <= 0) {
+                bed.hp = 0;
+                console.log(`Bed ${bed.teamId} DESTROYED by melee!`);
+                const bedBody = this.bedBodies.get(entityId);
+                if (bedBody) {
+                    Matter.Composite.remove(this.engine.world, bedBody);
+                    this.bedBodies.delete(entityId);
+                }
+            }
+        });
+        
+        // 近战攻击方块
+        this.state.entities.forEach((entity, entityId) => {
+            if (entity.type !== EntityType.BLOCK) return;
+            
+            const block = entity as Block;
+            if (block.hp <= 0) return;
+            
+            // 计算距离
+            const dx = block.x - position.x;
+            const dy = block.y - position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > range + 20) return; // 方块范围稍微宽松
+            
+            // 命中方块
+            block.hp -= damage;
+            console.log(`Melee hit block ${entityId}! HP: ${block.hp}/${block.maxHP}`);
+            
+            if (block.hp <= 0) {
+                this.removeBlock(entityId);
+            }
+        });
+    }
 
     respawnPlayer(sessionId: string) {
         const player = this.state.entities.get(sessionId) as Player;
@@ -805,14 +828,18 @@ export class GameRoom extends Room<GameState> {
         player.kills = 0;
         player.deaths = 0;
         player.damageDealt = 0;
+        player.lastMeleeTime = 0;
+        player.isMeleeAttacking = false;
+        player.meleeAngle = 0;
         
-        // 初始化背包 (HOTBAR)
-        // 1: Bow (Weapon)
-        // 2: Fireball (Weapon)
-        // 3: Dart (Weapon)
-        // 4: Wood (Block x 20)
-        // 5: Stone (Block x 10)
-        // 6: Diamond (Block x 5)
+        // 初始化背包 (HOTBAR) - 新弹药系统
+        // 1: Sword (永久近战武器)
+        // 2: Arrow (弹药)
+        // 3: Wood (方块)
+        // 4: Stone (方块)
+        // 5: Diamond (方块)
+        // 6: Gold (货币)
+        // 7-9: 空
         
         const createItem = (id: string, count: number) => {
             const item = new InventoryItem();
@@ -823,13 +850,12 @@ export class GameRoom extends Room<GameState> {
 
         
         // Fill initial inventory items
-        player.inventory.push(createItem(ItemType.BOW, 1));
-        player.inventory.push(createItem(ItemType.FIREBALL, 1));
-        player.inventory.push(createItem(ItemType.DART, 1));
+        player.inventory.push(createItem(ItemType.SWORD, 1));  // 永久近战武器
+        player.inventory.push(createItem(ItemType.ARROW, GAME_CONFIG.initialAmmo[ItemType.ARROW]));  // 初始箭矢
         player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
         player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
         player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
-        player.inventory.push(createItem(ItemType.GOLD_INGOT, 10)); // Initial gold for testing
+        player.inventory.push(createItem(ItemType.GOLD_INGOT, GAME_CONFIG.initialGold));
 
         // Fill remaining slots with empty items
         while (player.inventory.length < INVENTORY_SIZE) {
@@ -863,6 +889,9 @@ export class GameRoom extends Room<GameState> {
                 if (player) {
                     this.dropItemFromSlot(playerId, player, slotIndex, mouseX, mouseY);
                 }
+            },
+            (playerId, position, angle) => {
+                this.performMeleeAttack(playerId, position, angle);
             }
         );
         this.agents.set(characterId, agent);
@@ -900,6 +929,12 @@ export class GameRoom extends Room<GameState> {
         const item = player.inventory[slotIndex];
         if (!item || item.itemId === ItemType.EMPTY || item.count <= 0) {
             console.warn(`Cannot drop empty slot ${slotIndex}: itemId=${item?.itemId}, count=${item?.count}`);
+            return;
+        }
+        
+        // 禁止丢弃永久武器（剑）
+        if (item.itemId === ItemType.SWORD) {
+            console.warn(`Cannot drop permanent weapon: ${item.itemId}`);
             return;
         }
 
@@ -1105,19 +1140,24 @@ export class GameRoom extends Room<GameState> {
 
     /**
      * Create a resource generator
+     * @param generatorType - The type of loot table to use
+     * @param x - X position
+     * @param y - Y position  
+     * @param locationType - 'base' or 'center' to determine spawn rate
      */
-    createResourceGenerator(generatorType: string, x: number, y: number): string {
+    createResourceGenerator(generatorType: string, x: number, y: number, locationType: 'base' | 'center' = 'base'): string {
         const genId = `generator_${Math.random().toString(36).substr(2, 9)}`;
         const generator = new ResourceGenerator();
         generator.type = EntityType.RESOURCE_GENERATOR;
         generator.generatorType = generatorType;
+        generator.locationType = locationType;
         generator.x = x;
         generator.y = y;
         generator.lastSpawnTime = Date.now();
         generator.nearbyDropCount = 0;
 
         this.state.entities.set(genId, generator);
-        console.log(`Created resource generator: ${genId} (${generatorType}) at (${x}, ${y})`);
+        console.log(`Created ${locationType} resource generator: ${genId} (${generatorType}) at (${x}, ${y})`);
 
         return genId;
     }
@@ -1131,13 +1171,18 @@ export class GameRoom extends Room<GameState> {
         this.state.entities.forEach((entity, genId) => {
             if (entity.type === EntityType.RESOURCE_GENERATOR) {
                 const generator = entity as ResourceGenerator;
+                
+                // 根据位置类型获取配置
+                const config = generator.locationType === 'center' 
+                    ? RESOURCE_GENERATOR_CONFIG.center 
+                    : RESOURCE_GENERATOR_CONFIG.base;
 
                 // Check if it's time to spawn
-                if (now - generator.lastSpawnTime >= RESOURCE_GENERATOR_CONFIG.spawnInterval) {
+                if (now - generator.lastSpawnTime >= config.spawnInterval) {
                     // Count nearby drops
-                    const nearbyCount = this.countNearbyDrops(generator.x, generator.y, RESOURCE_GENERATOR_CONFIG.spawnRadius);
+                    const nearbyCount = this.countNearbyDrops(generator.x, generator.y, config.spawnRadius);
 
-                    if (nearbyCount < RESOURCE_GENERATOR_CONFIG.maxDropsNearby) {
+                    if (nearbyCount < config.maxDropsNearby) {
                         this.generateResource(generator);
                         generator.lastSpawnTime = now;
                     }
@@ -1152,6 +1197,11 @@ export class GameRoom extends Room<GameState> {
     generateResource(generator: ResourceGenerator) {
         const lootTable = GENERATOR_LOOT_TABLES[generator.generatorType];
         if (!lootTable) return;
+        
+        // 获取正确的配置
+        const config = generator.locationType === 'center' 
+            ? RESOURCE_GENERATOR_CONFIG.center 
+            : RESOURCE_GENERATOR_CONFIG.base;
 
         // Weighted random selection
         const totalWeight = lootTable.reduce((sum, entry) => sum + entry.weight, 0);
@@ -1165,7 +1215,7 @@ export class GameRoom extends Room<GameState> {
                 
                 // Spawn at random position around generator
                 const angle = Math.random() * Math.PI * 2;
-                const distance = Math.random() * RESOURCE_GENERATOR_CONFIG.spawnRadius;
+                const distance = Math.random() * config.spawnRadius;
                 const x = generator.x + Math.cos(angle) * distance;
                 const y = generator.y + Math.sin(angle) * distance;
 
@@ -1442,16 +1492,18 @@ export class GameRoom extends Room<GameState> {
             player.deaths = 0;
             player.damageDealt = 0;
             player.lastShootTime = 0;
+            player.lastMeleeTime = 0;
+            player.isMeleeAttacking = false;
+            player.meleeAngle = 0;
             
-            // Clear inventory and give initial items
+            // Clear inventory and give initial items (新弹药系统)
             player.inventory.clear();
-            player.inventory.push(createItem(ItemType.BOW, 1));
-            player.inventory.push(createItem(ItemType.FIREBALL, 1));
-            player.inventory.push(createItem(ItemType.DART, 1));
+            player.inventory.push(createItem(ItemType.SWORD, 1));  // 永久近战武器
+            player.inventory.push(createItem(ItemType.ARROW, GAME_CONFIG.initialAmmo[ItemType.ARROW]));
             player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
             player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
             player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
-            player.inventory.push(createItem(ItemType.GOLD_INGOT, 10));
+            player.inventory.push(createItem(ItemType.GOLD_INGOT, GAME_CONFIG.initialGold));
             
             // Fill remaining slots with empty items
             while (player.inventory.length < INVENTORY_SIZE) {

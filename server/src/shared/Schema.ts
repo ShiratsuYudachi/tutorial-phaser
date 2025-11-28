@@ -10,7 +10,8 @@ export interface InputData {
     tick: number;
     
     // Unified Action Inputs
-    isDown: boolean;         // Mouse is pressed
+    isDown: boolean;         // 左键按下（远程攻击/放置方块）
+    isRightDown: boolean;    // 右键按下（近战攻击）
     mouseX: number;          // World X
     mouseY: number;          // World Y
     selectedSlot?: number;   // 0-8, if user pressed number key
@@ -36,12 +37,17 @@ export class HealthEntity extends Entity {
 export class Player extends HealthEntity {
     @type("number") tick: number;
     @type("number") lastShootTime: number = 0;
+    @type("number") lastMeleeTime: number = 0;  // 近战冷却
     @type("string") teamId: string; // TeamType
     @type("boolean") isDead: boolean = false;
     @type("number") respawnTime: number = 0; // Respawn cooldown
     
     @type("string") ownerSessionId: string;
     @type("boolean") isActive: boolean = false;
+    
+    // 近战攻击状态（用于客户端动画）
+    @type("boolean") isMeleeAttacking: boolean = false;
+    @type("number") meleeAngle: number = 0;  // 近战攻击方向
     
     // New Inventory System
     @type([ InventoryItem ]) inventory = new ArraySchema<InventoryItem>();
@@ -54,9 +60,6 @@ export class Player extends HealthEntity {
     
     // Player Info
     @type("string") username: string = "";
-    
-    // Cheat Mode
-    @type("number") damageMultiplier: number = 1;
 
     inputQueue: InputData[] = [];
 }
@@ -85,7 +88,8 @@ export class DroppedItem extends Entity {
 }
 
 export class ResourceGenerator extends Entity {
-    @type("string") generatorType: string; // 'gold_generator' | 'resource_generator'
+    @type("string") generatorType: string; // 'base_gold_generator' | 'center_gold_generator' | etc.
+    @type("string") locationType: string = "base"; // 'base' | 'center'
     @type("number") lastSpawnTime: number = 0;
     @type("number") nearbyDropCount: number = 0;
 }

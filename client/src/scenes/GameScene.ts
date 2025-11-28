@@ -35,9 +35,6 @@ export class GameScene extends Phaser.Scene {
     // Switch Character Key (Tab)
     tabKey: Phaser.Input.Keyboard.Key;
 
-    // Chat Key (T)
-    tKey: Phaser.Input.Keyboard.Key;
-
     // Dropped Item Renderer
     droppedItemRenderer: DroppedItemRenderer;
 
@@ -69,6 +66,7 @@ export class GameScene extends Phaser.Scene {
         left: false, right: false, up: false, down: false,
         tick: 0, 
         isDown: false,
+        isRightDown: false,  // 右键近战攻击
         mouseX: 0,
         mouseY: 0
     };
@@ -76,6 +74,10 @@ export class GameScene extends Phaser.Scene {
     currentTick: number = 0;
     elapsedTime = 0;
     fixedTimeStep = 1000 / 60;
+    
+    // 近战攻击相关
+    meleeSound: Phaser.Sound.BaseSound;
+    meleeSwingGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
 
     constructor() { super({ key: "game" }); }
 
@@ -107,6 +109,46 @@ export class GameScene extends Phaser.Scene {
         if (placeBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.cache.audio.add('place', placeBuffer);
         }
+        
+        // 生成近战挥砍音效
+        const meleeBuffer = this.generateMeleeSound();
+        if (meleeBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
+            this.cache.audio.add('melee', meleeBuffer);
+        }
+    }
+    
+    generateMeleeSound(): AudioBuffer | null {
+        if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) return null;
+        
+        const audioContext = this.sound.context;
+        const sampleRate = audioContext.sampleRate;
+        const duration = 0.15;
+        const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        // 挥砍音效：从高频到低频的快速扫频 + 金属碰撞声
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            const progress = t / duration;
+            
+            // 扫频：从1000Hz到200Hz
+            const freq = 1000 - progress * 800;
+            const sweep = Math.sin(2 * Math.PI * freq * t) * 0.4;
+            
+            // 金属碰撞声（高频）
+            const metalFreq = 2500;
+            const metal = Math.sin(2 * Math.PI * metalFreq * t) * Math.exp(-t * 50) * 0.3;
+            
+            // 噪音（增加质感）
+            const noise = (Math.random() * 2 - 1) * 0.2 * Math.exp(-t * 20);
+            
+            // 包络
+            const envelope = Math.exp(-t * 15);
+            
+            data[i] = (sweep + metal + noise) * envelope * 0.3;
+        }
+        
+        return buffer;
     }
     
     generateWeaponSound(frequency: number, duration: number, decay: number): AudioBuffer | null {
@@ -180,11 +222,10 @@ export class GameScene extends Phaser.Scene {
         this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
         this.input.keyboard.addCapture('TAB'); // Prevent browser default
 
-        // Chat Key (T)
-        this.tKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
-        // We don't capture T so it can be typed in chat, but we need to handle the open trigger carefully
-
         this.mousePointer = this.input.activePointer;
+        
+        // 禁用右键菜单，让右键可以用于近战攻击
+        this.input.mouse.disableContextMenu();
         
         // Initialize dropped item renderer
         this.droppedItemRenderer = new DroppedItemRenderer(this);
@@ -240,6 +281,17 @@ export class GameScene extends Phaser.Scene {
         // 创建放置方块音效
         if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.placeBlockSound = this.sound.add('place', { volume: 0.4, rate: 1.2 });
+        }
+        
+        // 创建近战音效
+        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
+            this.meleeSound = this.sound.add('melee', { volume: 0.5, rate: 1 });
+        }
+    }
+    
+    playMeleeSound() {
+        if (this.meleeSound) {
+            this.meleeSound.play();
         }
     }
     
@@ -351,8 +403,36 @@ export class GameScene extends Phaser.Scene {
         ship.fillTriangle(15, 0, -10, -10, -10, 10);
 
         shipContainer.add(ship);
-        container.add(shipContainer);
         
+        // 添加剑的可视化
+        const swordContainer = this.add.container(12, 0);  // 剑的位置在玩家前方
+        const sword = this.add.graphics();
+        
+        // 剑的形状：刀刃 + 护手 + 剑柄
+        sword.fillStyle(0xC0C0C0, 1);  // 银色刀刃
+        sword.fillRect(0, -2, 20, 4);  // 刀刃主体
+        sword.fillStyle(0xFFD700, 1);  // 金色护手
+        sword.fillRect(-2, -4, 4, 8);  // 护手
+        sword.fillStyle(0x8B4513, 1);  // 棕色剑柄
+        sword.fillRect(-8, -2, 6, 4);  // 剑柄
+        sword.fillStyle(0xFFFFFF, 1);  // 白色剑尖
+        sword.fillTriangle(20, 0, 20, -2, 25, 0);
+        sword.fillTriangle(20, 0, 20, 2, 25, 0);
+        
+        swordContainer.add(sword);
+        swordContainer.setVisible(true);
+        shipContainer.add(swordContainer);
+        
+        container.setData('swordContainer', swordContainer);
+        
+        // 近战挥砍动画容器
+        const meleeSwing = this.add.graphics();
+        meleeSwing.setVisible(false);
+        container.add(meleeSwing);
+        container.setData('meleeSwing', meleeSwing);
+        container.setData('lastMeleeState', false);
+
+        container.add(shipContainer);
         container.setData('shipContainer', shipContainer);
 
         const healthBarBg = this.add.rectangle(0, -30, 40, 5, 0x000000);
@@ -407,6 +487,65 @@ export class GameScene extends Phaser.Scene {
             const isMyActiveChar = player.ownerSessionId === this.room.sessionId && player.isActive;
             highlight.setVisible(isMyActiveChar);
         }
+        
+        // 处理近战攻击动画
+        const lastMeleeState = container.getData('lastMeleeState') as boolean;
+        const meleeSwing = container.getData('meleeSwing') as Phaser.GameObjects.Graphics;
+        const swordContainer = container.getData('swordContainer') as Phaser.GameObjects.Container;
+        
+        if (player.isMeleeAttacking && !lastMeleeState && meleeSwing) {
+            // 开始近战动画
+            const meleeAngle = player.meleeAngle;
+            
+            // 播放近战音效（只为自己播放）
+            if (player.ownerSessionId === this.room.sessionId && player.isActive) {
+                this.playMeleeSound();
+            }
+            
+            // 绘制挥砍弧线
+            meleeSwing.clear();
+            meleeSwing.lineStyle(4, 0xFFFFFF, 0.8);
+            
+            // 绘制一个弧形的挥砍轨迹
+            const startAngle = meleeAngle - Math.PI / 4;
+            const endAngle = meleeAngle + Math.PI / 4;
+            const radius = 45;
+            
+            meleeSwing.beginPath();
+            meleeSwing.arc(0, 0, radius, startAngle, endAngle, false);
+            meleeSwing.strokePath();
+            
+            // 添加挥砍特效（发光的剑气）
+            meleeSwing.lineStyle(2, 0xFFFF00, 0.6);
+            meleeSwing.beginPath();
+            meleeSwing.arc(0, 0, radius + 5, startAngle, endAngle, false);
+            meleeSwing.strokePath();
+            
+            meleeSwing.setVisible(true);
+            
+            // 剑的挥动动画
+            if (swordContainer) {
+                this.tweens.add({
+                    targets: swordContainer,
+                    angle: { from: -45, to: 45 },
+                    duration: 150,
+                    ease: 'Power2',
+                    yoyo: true
+                });
+            }
+            
+            // 淡出动画
+            this.tweens.add({
+                targets: meleeSwing,
+                alpha: 0,
+                duration: 200,
+                onComplete: () => {
+                    meleeSwing.setVisible(false);
+                    meleeSwing.setAlpha(1);
+                }
+            });
+        }
+        container.setData('lastMeleeState', player.isMeleeAttacking);
 
         // Camera Follow Logic
         if (player.ownerSessionId === this.room.sessionId && player.isActive) {
@@ -626,6 +765,7 @@ export class GameScene extends Phaser.Scene {
         // Check for game restart (from ended to building)
         if (this.lastGamePhase === 'ended' && this.room.state.gamePhase === 'building') {
             console.log('Game restarted! Hiding end game screen.');
+            const { gameStore } = require('../ui/GameStore');
             gameStore.setGameEnded(false);
             gameStore.clearKillFeed();
         }
@@ -769,17 +909,8 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         
-        // Open Chat (T key)
-        if (Phaser.Input.Keyboard.JustDown(this.tKey)) {
-            if (!gameStore.isChatOpen) {
-                gameStore.toggleChat(true);
-                // Clear the input buffer to prevent 't' from being typed immediately? 
-                // React will handle focus.
-            }
-        }
-        
-        // Freeze inputs if game ended or chat is open
-        if (this.room.state.isFrozen || gameStore.isChatOpen) {
+        // Freeze inputs if game ended
+        if (this.room.state.isFrozen) {
             return;
         }
         
@@ -813,7 +944,8 @@ export class GameScene extends Phaser.Scene {
         
         // Action Inputs
         const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
-        this.inputPayload.isDown = this.mousePointer.isDown;
+        this.inputPayload.isDown = this.mousePointer.leftButtonDown();  // 左键 - 远程攻击/放置方块
+        this.inputPayload.isRightDown = this.mousePointer.rightButtonDown();  // 右键 - 近战攻击
         this.inputPayload.mouseX = worldPoint.x;
         this.inputPayload.mouseY = worldPoint.y;
         
@@ -941,14 +1073,14 @@ export class GameScene extends Phaser.Scene {
         const totalSeconds = Math.ceil(totalRemaining / 1000);
         const totalMins = Math.floor(totalSeconds / 60);
         const totalSecs = totalSeconds % 60;
-        const totalTimeStr = `${totalMins}:${totalSecs < 10 ? '0' + totalSecs : totalSecs}`;
+        const totalTimeStr = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
         
         // Phase Timer
         const phaseRemaining = Math.max(0, state.phaseEndTime - currentTime);
         const phaseSeconds = Math.ceil(phaseRemaining / 1000);
         const phaseMins = Math.floor(phaseSeconds / 60);
         const phaseSecs = phaseSeconds % 60;
-        const phaseTimeStr = `${phaseMins}:${phaseSecs < 10 ? '0' + phaseSecs : phaseSecs}`;
+        const phaseTimeStr = `${phaseMins}:${phaseSecs.toString().padStart(2, '0')}`;
         
         // Phase Name and Color
         let phaseName = '🏗️ BUILDING PHASE';
@@ -974,6 +1106,7 @@ export class GameScene extends Phaser.Scene {
         }
         
         // Update React UI via GameStore
+        const { gameStore } = require('../ui/GameStore');
         gameStore.updateTimer({
             totalTime: totalTimeStr,
             phaseTime: phaseTimeStr,
@@ -1030,9 +1163,9 @@ export class GameScene extends Phaser.Scene {
             this.lastKillFeedLength = killFeed.length;
             
             // Get the latest message and add to GameStore
-            // Get the latest message and add to GameStore
             if (killFeed.length > 0) {
                 const latestMessage = killFeed[killFeed.length - 1];
+                const { gameStore } = require('../ui/GameStore');
                 gameStore.addKillFeedMessage(latestMessage);
             }
         }
@@ -1060,7 +1193,7 @@ export class GameScene extends Phaser.Scene {
         });
         
         // Send data to React UI via GameStore
-        // Send data to React UI via GameStore
+        const { gameStore } = require('../ui/GameStore');
         gameStore.setGameEnded(true, winner, playerStats);
     }
 
