@@ -14,7 +14,8 @@ export class PlayerAgent extends Agent<Player> {
         schema: Player, 
         onShoot: (ownerId: string, pos: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) => void,
         onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockItem) => void,
-        onDropItem: (playerId: string, slotIndex: number, mouseX: number, mouseY: number) => void
+        onDropItem: (playerId: string, slotIndex: number, mouseX: number, mouseY: number) => void,
+        onMeleeAttack: (playerId: string, position: { x: number, y: number }, angle: number) => void
     ) {
         super(world, schema);
         this.sessionId = sessionId;
@@ -35,6 +36,7 @@ export class PlayerAgent extends Agent<Player> {
         controlBehavior.onShoot = (ownerId, pos, aimAngle, weaponType) => onShoot(this.sessionId, pos, aimAngle, weaponType);
         controlBehavior.onPlaceBlock = (playerId, x, y, blockType) => onPlaceBlock(this.sessionId, x, y, blockType);
         controlBehavior.onDropItem = (playerId, slotIndex, mouseX, mouseY) => onDropItem(this.sessionId, slotIndex, mouseX, mouseY);
+        controlBehavior.onMeleeAttack = (playerId, position, angle) => onMeleeAttack(this.sessionId, position, angle);
 
         this.addBehavior(controlBehavior);
         this.addBehavior(new SyncTransformBehavior(this));

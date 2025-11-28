@@ -373,6 +373,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
                         }}>
                             <li><strong>WASD:</strong> Move your character</li>
                             <li><strong>Mouse:</strong> Aim and shoot / place blocks</li>
+                            <li><strong>E:</strong> Melee attack</li>
                             <li><strong>1-9:</strong> Select inventory slots</li>
                             <li><strong>Q:</strong> Drop item</li>
                             <li><strong>TAB:</strong> Switch between your two characters</li>

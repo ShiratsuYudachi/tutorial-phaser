@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { Inventory } from './Inventory';
 import { Shop } from './Shop';
-import { gameStore, useShopState, useGameTimer, useKillFeed, useGameEnded, useGameEndData, useRematchState, useCurrentPlayer } from './GameStore';
 import { ChatBox } from './ChatBox';
 import { NotificationToast } from './NotificationToast';
+import { gameStore, useShopState, useGameTimer, useKillFeed, useGameEnded, useGameEndData, useRematchState, useCurrentPlayer, useTeamKills } from './GameStore';
 
 const EndGameScreen: React.FC = () => {
     const { winner, playerStats } = useGameEndData();
@@ -290,6 +290,11 @@ export function App() {
     const { totalTime, phaseTime, phaseName, phaseColor } = useGameTimer();
     const killFeed = useKillFeed();
     const isGameEnded = useGameEnded();
+    const { redKills, blueKills } = useTeamKills();
+    const currentPlayer = useCurrentPlayer();
+    
+    // Get current player's own gold (not team gold)
+    const myGold = (currentPlayer as any)?.gold || 0;
 
     const handleOpenShop = () => {
         gameStore.openShop();
@@ -334,7 +339,83 @@ export function App() {
                 }}>
                     {phaseTime}
                 </div>
+                
+                {/* Kill Scoreboard - Below Phase Timer */}
+                <div style={{
+                    marginTop: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    background: 'rgba(0, 0, 0, 0.6)',
+                    padding: '8px 20px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.2)'
+                }}>
+                    <span style={{
+                        fontSize: '24px',
+                        fontWeight: 'bold',
+                        color: '#ff4444',
+                        textShadow: '0 0 8px rgba(255, 0, 0, 0.5)',
+                        fontFamily: 'monospace',
+                        minWidth: '30px',
+                        textAlign: 'center'
+                    }}>
+                        {redKills}
+                    </span>
+                    <span style={{
+                        fontSize: '20px',
+                        color: '#ffffff'
+                    }}>
+                        ⚔
+                    </span>
+                    <span style={{
+                        fontSize: '24px',
+                        fontWeight: 'bold',
+                        color: '#4444ff',
+                        textShadow: '0 0 8px rgba(0, 0, 255, 0.5)',
+                        fontFamily: 'monospace',
+                        minWidth: '30px',
+                        textAlign: 'center'
+                    }}>
+                        {blueKills}
+                    </span>
+                </div>
             </div>
+
+            {/* Player's Gold Display - Bottom Left */}
+            {!isGameEnded && currentPlayer && (
+                <div style={{
+                    position: 'absolute',
+                    bottom: '20px',
+                    left: '20px',
+                    zIndex: 1000,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    padding: '10px 16px',
+                    borderRadius: '10px',
+                    border: '2px solid rgba(255, 215, 0, 0.5)',
+                    pointerEvents: 'none'
+                }}>
+                    <Icon 
+                        icon="game-icons:gold-bar" 
+                        width="28" 
+                        height="28" 
+                        style={{ color: '#FFD700' }}
+                    />
+                    <span style={{
+                        fontSize: '22px',
+                        fontWeight: 'bold',
+                        color: '#FFD700',
+                        textShadow: '0 0 4px rgba(255, 215, 0, 0.5)',
+                        fontFamily: 'monospace'
+                    }}>
+                        {myGold}
+                    </span>
+                </div>
+            )}
 
             {/* Kill Feed - Right Top */}
             <div style={{

@@ -1,7 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem, DroppedItem, ResourceGenerator } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
+import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, MELEE_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, isAmmo, isMelee, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 import { AuthService } from "../services/AuthService";
@@ -16,6 +16,9 @@ export class GameRoom extends Room<GameState> {
     bulletBodies = new Map<string, Matter.Body>();
     bedBodies = new Map<string, Matter.Body>(); // 存储床的物理体
     blockBodies = new Map<string, Matter.Body>(); // 存储方块的物理体
+    
+    // Notification cooldown tracking (sessionId -> lastNotificationTime)
+    lastInventoryFullNotification = new Map<string, number>();
     
     // 队伍分配
     teamAssignments: string[] = []; // 按加入顺序: [红队sessionId, 蓝队sessionId]
@@ -111,8 +114,10 @@ export class GameRoom extends Room<GameState> {
                         if (char) {
                             char.damageMultiplier = 100; // 100x damage
                             
-                            // Give unlimited money (Gold and Diamond)
-                            // Find existing slots or add new ones
+                            // Give unlimited gold (as currency, not inventory)
+                            char.gold = 9999;
+                            
+                            // Give unlimited items in inventory
                             const giveItem = (itemType: string, amount: number) => {
                                 let found = false;
                                 for (const item of char.inventory) {
@@ -134,11 +139,13 @@ export class GameRoom extends Room<GameState> {
                                 }
                             };
                             
-                            giveItem(ItemType.GOLD_INGOT, 9999);
                             giveItem(ItemType.DIAMOND, 9999);
-                            giveItem(ItemType.FIREBALL, 9999); // Unlimited ammo too
+                            giveItem(ItemType.FIREBALL_AMMO, 9999); // Unlimited ammo too
                         }
                     });
+                    
+                    // Update team gold display
+                    this.updateTeamGold();
                     
                     // Send private confirmation
                     client.send("chat_message", {
@@ -251,46 +258,56 @@ export class GameRoom extends Room<GameState> {
 
             console.log(`Player ${client.sessionId} attempting trade: ${trade.name}`);
 
-            // Check if player has enough of the cost item
-            let totalCostItemCount = 0;
-            const costItemSlots: number[] = [];
-            
-            for (let i = 0; i < player.inventory.length; i++) {
-                const item = player.inventory[i];
-                if (item && item.itemId === trade.cost.itemType) {
-                    totalCostItemCount += item.count;
-                    costItemSlots.push(i);
-                }
+            // Check if player has enough gold (gold is now a currency, not inventory item)
+            if (trade.cost.itemType !== ItemType.GOLD_INGOT) {
+                console.warn(`Shop trade: Only gold currency is supported for purchases`);
+                return;
             }
-
-            if (totalCostItemCount < trade.cost.count) {
-                console.warn(`Shop trade: Player doesn't have enough ${trade.cost.itemType}. Has ${totalCostItemCount}, needs ${trade.cost.count}`);
+            
+            if (player.gold < trade.cost.count) {
+                console.warn(`Shop trade: Player doesn't have enough gold. Has ${player.gold}, needs ${trade.cost.count}`);
+                client.send("notification", {
+                    text: "Not enough gold!",
+                    color: "#ff4444"
+                });
                 return;
             }
 
-            // Deduct cost items
-            let remainingCost = trade.cost.count;
-            for (const slotIndex of costItemSlots) {
-                if (remainingCost <= 0) break;
-                
-                const item = player.inventory[slotIndex];
-                if (!item) continue;
-
-                const deductAmount = Math.min(item.count, remainingCost);
-                item.count -= deductAmount;
-                remainingCost -= deductAmount;
-
-                // If count reaches 0, replace with empty item
-                if (item.count <= 0) {
-                    const emptyItem = new InventoryItem();
-                    emptyItem.itemId = ItemType.EMPTY;
-                    emptyItem.count = 0;
-                    player.inventory[slotIndex] = emptyItem;
+            // Check if there's enough space for the reward items BEFORE deducting
+            const rewardItemDef = ITEM_DEFINITIONS[trade.reward.itemType];
+            let spaceAvailable = 0;
+            
+            // Calculate space in existing stacks
+            for (let i = 0; i < player.inventory.length; i++) {
+                const item = player.inventory[i];
+                if (item && item.itemId === trade.reward.itemType && item.count < rewardItemDef.maxStack) {
+                    spaceAvailable += rewardItemDef.maxStack - item.count;
                 }
             }
+            
+            // Calculate space in empty slots
+            for (let i = 0; i < player.inventory.length; i++) {
+                const item = player.inventory[i];
+                if (item && item.itemId === ItemType.EMPTY) {
+                    spaceAvailable += rewardItemDef.maxStack;
+                }
+            }
+            
+            // If not enough space, reject the trade and notify player
+            if (spaceAvailable < trade.reward.count) {
+                console.warn(`Shop trade: Inventory full! Cannot fit ${trade.reward.count} items, only ${spaceAvailable} space available`);
+                client.send("notification", {
+                    text: "Inventory Full! Cannot purchase item.",
+                    color: "#ff4444"
+                });
+                return;
+            }
+
+            // Deduct gold from player's currency
+            player.gold -= trade.cost.count;
+            console.log(`Deducted ${trade.cost.count} gold. Remaining: ${player.gold}`);
 
             // Add reward items to inventory
-            const rewardItemDef = ITEM_DEFINITIONS[trade.reward.itemType];
             let remainingReward = trade.reward.count;
 
             // First, try to stack with existing items
@@ -314,9 +331,8 @@ export class GameRoom extends Room<GameState> {
                 }
             }
 
-            if (remainingReward > 0) {
-                console.warn(`Shop trade: Could not fit all reward items. ${remainingReward} items lost.`);
-            }
+            // Update team gold after purchase (gold was spent)
+            this.updateTeamGold();
 
             console.log(`Shop trade complete: ${trade.name}`);
         });
@@ -350,9 +366,19 @@ export class GameRoom extends Room<GameState> {
             }
         });
 
-        // Create resource generators for testing
-        this.createResourceGenerator('gold_generator', 400, 150);
-        this.createResourceGenerator('resource_generator', 400, 450);
+        // Create resource generators
+        // 红队基地生成器（靠近红床 x=80）
+        this.createResourceGenerator('base_gold_generator', 120, 250, 'base');      // 红队金矿
+        this.createResourceGenerator('base_resource_generator', 120, 350, 'base');  // 红队资源矿
+        
+        // 蓝队基地生成器（靠近蓝床 x=720）
+        this.createResourceGenerator('base_gold_generator', 680, 250, 'base');      // 蓝队金矿
+        this.createResourceGenerator('base_resource_generator', 680, 350, 'base');  // 蓝队资源矿
+        
+        // 中央生成器（地图中心 x=400）- 高价值争夺点
+        this.createResourceGenerator('center_gold_generator', 400, 300, 'center');     // 中央金矿（最高产出）
+        this.createResourceGenerator('center_resource_generator', 400, 200, 'center'); // 中央资源矿上
+        this.createResourceGenerator('center_resource_generator', 400, 400, 'center'); // 中央资源矿下
 
         // Simulation Loop
         this.setSimulationInterval((deltaTime) => {
@@ -607,6 +633,9 @@ export class GameRoom extends Room<GameState> {
                 }
             }
         });
+        
+        // 6. Check for players out of bounds - instant death
+        this.checkOutOfBounds();
     }
 
     spawnBullet(ownerId: string, position: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) {
@@ -622,10 +651,7 @@ export class GameRoom extends Room<GameState> {
         bullet.x = position.x;
         bullet.y = position.y;
         bullet.ownerId = ownerId;
-        
-        // Apply damage multiplier from player
-        bullet.damage = weaponConfig.damage * (player.damageMultiplier || 1);
-        
+        bullet.damage = weaponConfig.damage;
         bullet.weaponType = weaponType;
 
         // 使用瞄准角度和武器速度
@@ -751,6 +777,157 @@ export class GameRoom extends Room<GameState> {
         // 移除实体
         this.state.entities.delete(blockId);
     }
+    
+    /**
+     * 执行近战攻击
+     */
+    performMeleeAttack(attackerId: string, position: { x: number, y: number }, angle: number) {
+        const attacker = this.state.entities.get(attackerId) as Player;
+        if (!attacker || attacker.isDead) return;
+        
+        const meleeConfig = MELEE_CONFIG[ItemType.SWORD];
+        const range = meleeConfig.range;
+        const damage = meleeConfig.damage;
+        const knockback = meleeConfig.knockback;
+        
+        // 计算攻击扇形区域（60度扇形）
+        const halfAngle = Math.PI / 6; // 30度
+        
+        // 查找范围内的目标
+        this.agents.forEach((agent, targetId) => {
+            if (targetId === attackerId) return; // 不攻击自己
+            
+            const target = agent.schema as Player;
+            if (!target || target.isDead) return;
+            
+            // 计算距离
+            const dx = agent.body.position.x - position.x;
+            const dy = agent.body.position.y - position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > range) return; // 超出范围
+            
+            // 计算目标角度
+            const targetAngle = Math.atan2(dy, dx);
+            
+            // 检查是否在攻击扇形内
+            let angleDiff = targetAngle - angle;
+            // 规范化角度差到 -PI 到 PI
+            while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+            
+            if (Math.abs(angleDiff) > halfAngle) return; // 不在扇形内
+            
+            // 命中！造成伤害
+            target.hp -= damage;
+            attacker.damageDealt += damage;
+            
+            console.log(`Melee hit! ${attackerId} -> ${targetId}, damage: ${damage}, remaining HP: ${target.hp}`);
+            
+            // 击退效果
+            const knockbackX = Math.cos(angle) * knockback;
+            const knockbackY = Math.sin(angle) * knockback;
+            Matter.Body.setVelocity(agent.body, { x: knockbackX, y: knockbackY });
+            
+            // 检查死亡
+            const died = this.checkPlayerDeath(targetId);
+            if (died) {
+                attacker.kills++;
+                this.addKillFeed(attackerId, targetId);
+            }
+        });
+        
+        // 近战也可以攻击床
+        this.state.entities.forEach((entity, entityId) => {
+            if (entity.type !== EntityType.BED) return;
+            
+            const bed = entity as Bed;
+            if (bed.hp <= 0) return;
+            if (bed.teamId === attacker.teamId) return; // 不攻击自己队的床
+            
+            // 计算距离
+            const dx = bed.x - position.x;
+            const dy = bed.y - position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > range + 30) return; // 床比较大，范围稍微宽松
+            
+            // 命中床
+            bed.hp -= damage;
+            console.log(`Melee hit bed ${bed.teamId}! HP: ${bed.hp}/${bed.maxHP}`);
+            
+            if (bed.hp <= 0) {
+                bed.hp = 0;
+                console.log(`Bed ${bed.teamId} DESTROYED by melee!`);
+                const bedBody = this.bedBodies.get(entityId);
+                if (bedBody) {
+                    Matter.Composite.remove(this.engine.world, bedBody);
+                    this.bedBodies.delete(entityId);
+                }
+            }
+        });
+        
+        // 近战攻击方块
+        this.state.entities.forEach((entity, entityId) => {
+            if (entity.type !== EntityType.BLOCK) return;
+            
+            const block = entity as Block;
+            if (block.hp <= 0) return;
+            
+            // 计算距离
+            const dx = block.x - position.x;
+            const dy = block.y - position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > range + 20) return; // 方块范围稍微宽松
+            
+            // 命中方块
+            block.hp -= damage;
+            console.log(`Melee hit block ${entityId}! HP: ${block.hp}/${block.maxHP}`);
+            
+            if (block.hp <= 0) {
+                this.removeBlock(entityId);
+            }
+        });
+    }
+
+    /**
+     * Check for players outside map boundaries and kill them instantly
+     */
+    checkOutOfBounds() {
+        const margin = 50; // Small margin outside the visible map
+        const minX = -margin;
+        const maxX = this.state.mapWidth + margin;
+        const minY = -margin;
+        const maxY = this.state.mapHeight + margin;
+        
+        this.agents.forEach((agent, playerId) => {
+            const player = this.state.entities.get(playerId) as Player;
+            if (!player || player.isDead) return;
+            
+            const x = agent.body.position.x;
+            const y = agent.body.position.y;
+            
+            if (x < minX || x > maxX || y < minY || y > maxY) {
+                console.log(`Player ${playerId} out of bounds at (${x}, ${y}) - killing instantly`);
+                
+                // Instant death - set HP to 0
+                player.hp = 0;
+                player.isDead = true;
+                player.deaths++;
+                
+                // Move body to off-screen
+                Matter.Body.setPosition(agent.body, { x: -1000, y: -1000 });
+                Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
+                
+                // Add to kill feed (death by environment)
+                this.addKillFeed(null, player, "fell off the map");
+                
+                // Start respawn process
+                this.startRespawn(playerId);
+            }
+        });
+    }
 
     respawnPlayer(sessionId: string) {
         const player = this.state.entities.get(sessionId) as Player;
@@ -805,14 +982,20 @@ export class GameRoom extends Room<GameState> {
         player.kills = 0;
         player.deaths = 0;
         player.damageDealt = 0;
+        player.lastMeleeTime = 0;
+        player.isMeleeAttacking = false;
+        player.meleeAngle = 0;
         
-        // 初始化背包 (HOTBAR)
-        // 1: Bow (Weapon)
-        // 2: Fireball (Weapon)
-        // 3: Dart (Weapon)
-        // 4: Wood (Block x 20)
-        // 5: Stone (Block x 10)
-        // 6: Diamond (Block x 5)
+        // Set initial gold as currency (not inventory item)
+        player.gold = GAME_CONFIG.initialGold;
+        
+        // Initialize inventory (HOTBAR)
+        // Melee attack is built-in (not an inventory item)
+        // 1: Arrow (ammo)
+        // 2: Wood (block)
+        // 3: Stone (block)
+        // 4: Diamond (block)
+        // 5-9: empty
         
         const createItem = (id: string, count: number) => {
             const item = new InventoryItem();
@@ -822,14 +1005,11 @@ export class GameRoom extends Room<GameState> {
         };
 
         
-        // Fill initial inventory items
-        player.inventory.push(createItem(ItemType.BOW, 1));
-        player.inventory.push(createItem(ItemType.FIREBALL, 1));
-        player.inventory.push(createItem(ItemType.DART, 1));
+        // Fill initial inventory items (no sword - melee is built-in, no gold - gold is currency)
+        player.inventory.push(createItem(ItemType.ARROW, GAME_CONFIG.initialAmmo[ItemType.ARROW]));  // Initial arrows
         player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
         player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
         player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
-        player.inventory.push(createItem(ItemType.GOLD_INGOT, 10)); // Initial gold for testing
 
         // Fill remaining slots with empty items
         while (player.inventory.length < INVENTORY_SIZE) {
@@ -863,6 +1043,9 @@ export class GameRoom extends Room<GameState> {
                 if (player) {
                     this.dropItemFromSlot(playerId, player, slotIndex, mouseX, mouseY);
                 }
+            },
+            (playerId, position, angle) => {
+                this.performMeleeAttack(playerId, position, angle);
             }
         );
         this.agents.set(characterId, agent);
@@ -900,6 +1083,12 @@ export class GameRoom extends Room<GameState> {
         const item = player.inventory[slotIndex];
         if (!item || item.itemId === ItemType.EMPTY || item.count <= 0) {
             console.warn(`Cannot drop empty slot ${slotIndex}: itemId=${item?.itemId}, count=${item?.count}`);
+            return;
+        }
+        
+        // 禁止丢弃永久武器（剑）
+        if (item.itemId === ItemType.SWORD) {
+            console.warn(`Cannot drop permanent weapon: ${item.itemId}`);
             return;
         }
 
@@ -1041,11 +1230,21 @@ export class GameRoom extends Room<GameState> {
     }
 
     /**
-     * Add item to player's inventory
+     * Add item to player's inventory (or gold to currency)
      */
     pickupItem(player: Player, dropId: string, drop: DroppedItem) {
+        // Special handling for gold - add directly to player's gold currency
+        if (drop.itemType === ItemType.GOLD_INGOT) {
+            player.gold += drop.count;
+            this.state.entities.delete(dropId);
+            console.log(`Player picked up ${drop.count} gold. Total: ${player.gold}`);
+            this.updateTeamGold();
+            return;
+        }
+        
         const itemDef = ITEM_DEFINITIONS[drop.itemType as ItemType];
         let remaining = drop.count;
+        const originalCount = drop.count;
 
         // Try to stack with existing items
         for (let i = 0; i < player.inventory.length && remaining > 0; i++) {
@@ -1072,6 +1271,23 @@ export class GameRoom extends Room<GameState> {
             // Fully picked up
             this.state.entities.delete(dropId);
             console.log(`Player picked up ${drop.count}x ${drop.itemType}`);
+        } else if (remaining === originalCount) {
+            // Nothing could be picked up - inventory completely full
+            // Rate limit notifications (max once per 2 seconds per player)
+            const now = Date.now();
+            const lastNotification = this.lastInventoryFullNotification.get(player.ownerSessionId) || 0;
+            
+            if (now - lastNotification > 2000) {
+                const client = this.clients.find(c => c.sessionId === player.ownerSessionId);
+                if (client) {
+                    client.send("notification", {
+                        text: "Inventory Full!",
+                        color: "#ff4444"
+                    });
+                }
+                this.lastInventoryFullNotification.set(player.ownerSessionId, now);
+            }
+            console.log(`Player could not pick up ${drop.itemType} - inventory full`);
         } else {
             // Partially picked up
             drop.count = remaining;
@@ -1105,19 +1321,24 @@ export class GameRoom extends Room<GameState> {
 
     /**
      * Create a resource generator
+     * @param generatorType - The type of loot table to use
+     * @param x - X position
+     * @param y - Y position  
+     * @param locationType - 'base' or 'center' to determine spawn rate
      */
-    createResourceGenerator(generatorType: string, x: number, y: number): string {
+    createResourceGenerator(generatorType: string, x: number, y: number, locationType: 'base' | 'center' = 'base'): string {
         const genId = `generator_${Math.random().toString(36).substr(2, 9)}`;
         const generator = new ResourceGenerator();
         generator.type = EntityType.RESOURCE_GENERATOR;
         generator.generatorType = generatorType;
+        generator.locationType = locationType;
         generator.x = x;
         generator.y = y;
         generator.lastSpawnTime = Date.now();
         generator.nearbyDropCount = 0;
 
         this.state.entities.set(genId, generator);
-        console.log(`Created resource generator: ${genId} (${generatorType}) at (${x}, ${y})`);
+        console.log(`Created ${locationType} resource generator: ${genId} (${generatorType}) at (${x}, ${y})`);
 
         return genId;
     }
@@ -1131,13 +1352,18 @@ export class GameRoom extends Room<GameState> {
         this.state.entities.forEach((entity, genId) => {
             if (entity.type === EntityType.RESOURCE_GENERATOR) {
                 const generator = entity as ResourceGenerator;
+                
+                // 根据位置类型获取配置
+                const config = generator.locationType === 'center' 
+                    ? RESOURCE_GENERATOR_CONFIG.center 
+                    : RESOURCE_GENERATOR_CONFIG.base;
 
                 // Check if it's time to spawn
-                if (now - generator.lastSpawnTime >= RESOURCE_GENERATOR_CONFIG.spawnInterval) {
+                if (now - generator.lastSpawnTime >= config.spawnInterval) {
                     // Count nearby drops
-                    const nearbyCount = this.countNearbyDrops(generator.x, generator.y, RESOURCE_GENERATOR_CONFIG.spawnRadius);
+                    const nearbyCount = this.countNearbyDrops(generator.x, generator.y, config.spawnRadius);
 
-                    if (nearbyCount < RESOURCE_GENERATOR_CONFIG.maxDropsNearby) {
+                    if (nearbyCount < config.maxDropsNearby) {
                         this.generateResource(generator);
                         generator.lastSpawnTime = now;
                     }
@@ -1152,6 +1378,11 @@ export class GameRoom extends Room<GameState> {
     generateResource(generator: ResourceGenerator) {
         const lootTable = GENERATOR_LOOT_TABLES[generator.generatorType];
         if (!lootTable) return;
+        
+        // 获取正确的配置
+        const config = generator.locationType === 'center' 
+            ? RESOURCE_GENERATOR_CONFIG.center 
+            : RESOURCE_GENERATOR_CONFIG.base;
 
         // Weighted random selection
         const totalWeight = lootTable.reduce((sum, entry) => sum + entry.weight, 0);
@@ -1165,7 +1396,7 @@ export class GameRoom extends Room<GameState> {
                 
                 // Spawn at random position around generator
                 const angle = Math.random() * Math.PI * 2;
-                const distance = Math.random() * RESOURCE_GENERATOR_CONFIG.spawnRadius;
+                const distance = Math.random() * config.spawnRadius;
                 const x = generator.x + Math.cos(angle) * distance;
                 const y = generator.y + Math.sin(angle) * distance;
 
@@ -1323,15 +1554,41 @@ export class GameRoom extends Room<GameState> {
         console.log(`Game ended! Winner: ${this.state.winner}`);
     }
     
-    addKillFeed(killerId: string, victimId: string) {
-        const killer = this.state.entities.get(killerId) as Player;
-        const victim = this.state.entities.get(victimId) as Player;
+    addKillFeed(killerId: string | null, victimOrId: string | Player, environmentMessage?: string) {
+        // Get victim player
+        let victim: Player | null = null;
+        let victimId: string = "";
         
-        if (!killer || !victim) return;
+        if (typeof victimOrId === "string") {
+            victim = this.state.entities.get(victimOrId) as Player;
+            victimId = victimOrId;
+        } else {
+            victim = victimOrId;
+            victimId = victim.ownerSessionId || "";
+        }
         
-        const killerName = killer.username || killerId;
+        if (!victim) return;
+        
         const victimName = victim.username || victimId;
-        const killMessage = `${killerName} eliminated ${victimName}`;
+        let killMessage: string;
+        
+        if (killerId === null || environmentMessage) {
+            // Environmental death
+            killMessage = `${victimName} ${environmentMessage || "died"}`;
+        } else {
+            const killer = this.state.entities.get(killerId) as Player;
+            if (!killer) return;
+            
+            // Track team kills
+            if (killer.teamId === TeamType.RED) {
+                this.state.redKills++;
+            } else if (killer.teamId === TeamType.BLUE) {
+                this.state.blueKills++;
+            }
+            
+            const killerName = killer.username || killerId;
+            killMessage = `${killerName} eliminated ${victimName}`;
+        }
         
         this.state.killFeed.push(killMessage);
         if (this.state.killFeed.length > 5) {
@@ -1339,6 +1596,29 @@ export class GameRoom extends Room<GameState> {
         }
         
         console.log(killMessage);
+    }
+    
+    /**
+     * Update team gold totals by summing all players' gold
+     */
+    updateTeamGold() {
+        let redGold = 0;
+        let blueGold = 0;
+        
+        this.state.entities.forEach((entity) => {
+            if (entity instanceof Player) {
+                const player = entity as Player;
+                // Sum gold from player's currency field
+                if (player.teamId === TeamType.RED) {
+                    redGold += player.gold;
+                } else if (player.teamId === TeamType.BLUE) {
+                    blueGold += player.gold;
+                }
+            }
+        });
+        
+        this.state.redGold = redGold;
+        this.state.blueGold = blueGold;
     }
     
     enforceBuildingPhaseRestrictions() {
@@ -1412,6 +1692,12 @@ export class GameRoom extends Room<GameState> {
         this.state.rematchReady.clear();
         this.state.rematchCountdown = 0;
         this.state.killFeed.clear();
+        
+        // Reset team statistics
+        this.state.redKills = 0;
+        this.state.blueKills = 0;
+        this.state.redGold = 0;
+        this.state.blueGold = 0;
 
         // Remove all entities except players
         const playersToKeep = new Map<string, Player>();
@@ -1442,16 +1728,19 @@ export class GameRoom extends Room<GameState> {
             player.deaths = 0;
             player.damageDealt = 0;
             player.lastShootTime = 0;
+            player.lastMeleeTime = 0;
+            player.isMeleeAttacking = false;
+            player.meleeAngle = 0;
             
-            // Clear inventory and give initial items
+            // Set initial gold as currency (not inventory item)
+            player.gold = GAME_CONFIG.initialGold;
+            
+            // Clear inventory and give initial items (no sword - melee is built-in)
             player.inventory.clear();
-            player.inventory.push(createItem(ItemType.BOW, 1));
-            player.inventory.push(createItem(ItemType.FIREBALL, 1));
-            player.inventory.push(createItem(ItemType.DART, 1));
+            player.inventory.push(createItem(ItemType.ARROW, GAME_CONFIG.initialAmmo[ItemType.ARROW]));
             player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
             player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
             player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
-            player.inventory.push(createItem(ItemType.GOLD_INGOT, 10));
             
             // Fill remaining slots with empty items
             while (player.inventory.length < INVENTORY_SIZE) {
@@ -1491,6 +1780,23 @@ export class GameRoom extends Room<GameState> {
         // Recreate beds (old ones were cleared with entities)
         this.createBed(TeamType.RED, GAME_CONFIG.redBedPos.x, GAME_CONFIG.redBedPos.y);
         this.createBed(TeamType.BLUE, GAME_CONFIG.blueBedPos.x, GAME_CONFIG.blueBedPos.y);
+        
+        // Recreate resource generators (old ones were cleared with entities)
+        // Red team base generators
+        this.createResourceGenerator('base_gold_generator', 120, 250, 'base');
+        this.createResourceGenerator('base_resource_generator', 120, 350, 'base');
+        
+        // Blue team base generators
+        this.createResourceGenerator('base_gold_generator', 680, 250, 'base');
+        this.createResourceGenerator('base_resource_generator', 680, 350, 'base');
+        
+        // Center generators
+        this.createResourceGenerator('center_gold_generator', 400, 300, 'center');
+        this.createResourceGenerator('center_resource_generator', 400, 200, 'center');
+        this.createResourceGenerator('center_resource_generator', 400, 400, 'center');
+        
+        // Update initial team gold
+        this.updateTeamGold();
 
         console.log('Game reset complete!');
     }

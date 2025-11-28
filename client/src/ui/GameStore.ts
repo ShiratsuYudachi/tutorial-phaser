@@ -120,41 +120,40 @@ class GameStore {
         
         console.log("GameStore: setting up listeners");
         
+        // Use the new getStateCallbacks API for proper state change tracking
+        const $ = getStateCallbacks(this.room);
+        
         // Listen for any state change to notify UI
         this.room.onStateChange((state) => {
-            // Sync countdown
-            if (state.rematchCountdown !== undefined && state.rematchCountdown !== this.rematchCountdown) {
-                this.rematchCountdown = state.rematchCountdown;
-            }
             this.notify();
         });
 
         // Helper to setup player listeners
         const setupPlayerListeners = (player: any, id: string) => {
              // Listen to property changes
-             player.onChange = () => {
+             $(player).onChange(() => {
                  if (player.isActive && this.currentPlayerId !== id) {
                      this.currentPlayerId = id;
                      this.notify();
                  }
                  console.log("GameStore: player changed");
                  this.notify();
-             };
+             });
 
-             // Listen to inventory changes
+             // Listen to inventory changes using $ callbacks
              if (player.inventory) {
-                 player.inventory.onAdd = () => {
+                 $(player.inventory).onAdd(() => {
                      console.log("GameStore: inventory item added");
                      this.notify();
-                 };
-                 player.inventory.onRemove = () => {
+                 });
+                 $(player.inventory).onRemove(() => {
                      console.log("GameStore: inventory item removed");
                      this.notify();
-                 };
-                 player.inventory.onChange = () => {
+                 });
+                 $(player.inventory).onChange(() => {
                      console.log("GameStore: inventory changed");
                      this.notify();
-                 };
+                 });
              }
         };
 
@@ -171,7 +170,7 @@ class GameStore {
         });
 
         // 2. Listen for new entities
-        (this.room.state.entities as any).onAdd = (entity: any, id: string) => {
+        $(this.room.state).entities.onAdd((entity: any, id: string) => {
             console.log("GameStore: entity added", id);
             
             if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
@@ -181,7 +180,7 @@ class GameStore {
                      this.notify();
                  }
             }
-        };
+        });
         
         // 3. Sync existing rematchReady values first
         const state = this.room.state as any;
@@ -192,30 +191,35 @@ class GameStore {
             });
         }
         
-        // 4. Listen for rematch state changes
-        if (state.rematchReady) {
-            state.rematchReady.onAdd = (value: boolean, sessionId: string) => {
-                console.log('GameStore: rematchReady.onAdd', sessionId, '=', value);
-                this.rematchReady.set(sessionId, value);
-                this.notify();
-            };
-            
-            state.rematchReady.onChange = (value: boolean, sessionId: string) => {
-                console.log('GameStore: rematchReady.onChange', sessionId, '=', value);
-                this.rematchReady.set(sessionId, value);
-                this.notify();
-            };
-            
-            state.rematchReady.onRemove = (value: boolean, sessionId: string) => {
-                console.log('GameStore: rematchReady.onRemove', sessionId);
-                this.rematchReady.delete(sessionId);
-                this.notify();
-            };
-        }
-
-        // 5. Listen for chat messages
+        // 4. Listen for rematch state changes using the correct $ callbacks API
+        $(this.room.state).rematchReady.onAdd((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onAdd', sessionId, '=', value);
+            this.rematchReady.set(sessionId, value);
+            this.notify();
+        });
+        
+        $(this.room.state).rematchReady.onChange((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onChange', sessionId, '=', value);
+            this.rematchReady.set(sessionId, value);
+            this.notify();
+        });
+        
+        $(this.room.state).rematchReady.onRemove((value: boolean, sessionId: string) => {
+            console.log('GameStore: rematchReady.onRemove', sessionId);
+            this.rematchReady.delete(sessionId);
+            this.notify();
+        });
+        
+        // 5. Listen for countdown changes
+        $(this.room.state).listen("rematchCountdown", (value: number) => {
+            console.log('GameStore: rematchCountdown changed', this.rematchCountdown, '->', value);
+            this.rematchCountdown = value;
+            this.notify();
+        });
+        
+        // 6. Listen for chat messages
         this.room.onMessage("chat_message", (message: { sender: string; text: string; teamId: string }) => {
-            console.log("GameStore: chat message received", message);
+            console.log("GameStore: received chat message", message);
             this.chatMessages.push(message);
             if (this.chatMessages.length > 50) {
                 this.chatMessages.shift();
@@ -223,8 +227,9 @@ class GameStore {
             this.notify();
         });
 
-        // 6. Listen for notifications
+        // 7. Listen for notifications
         this.room.onMessage("notification", (data: { text: string; color: string }) => {
+            console.log("GameStore: received notification", data);
             this.addNotification(data.text, data.color);
         });
     }
@@ -352,7 +357,7 @@ class GameStore {
             console.error('  ❌ ERROR: No room available!');
         }
     }
-
+    
     // Chat methods
     toggleChat(isOpen?: boolean) {
         this.isChatOpen = isOpen !== undefined ? isOpen : !this.isChatOpen;
@@ -521,7 +526,7 @@ export function useChatState() {
     return { isOpen, messages };
 }
 
-export function useNotificationState() {
+export function useNotifications() {
     const [notifications, setNotifications] = useState(gameStore.notifications);
 
     useEffect(() => {
@@ -534,15 +539,40 @@ export function useNotificationState() {
     return notifications;
 }
 
-export function useNotifications() {
-    const [notifications, setNotifications] = useState(gameStore.notifications);
+export function useTeamKills() {
+    const [kills, setKills] = useState({ redKills: 0, blueKills: 0 });
 
     useEffect(() => {
         const update = () => {
-            setNotifications([...gameStore.notifications]);
+            if (gameStore.room?.state) {
+                const state = gameStore.room.state as any;
+                setKills({
+                    redKills: state.redKills || 0,
+                    blueKills: state.blueKills || 0
+                });
+            }
         };
         return gameStore.subscribe(update);
     }, []);
 
-    return notifications;
+    return kills;
+}
+
+export function useTeamGold() {
+    const [gold, setGold] = useState({ redGold: 0, blueGold: 0 });
+
+    useEffect(() => {
+        const update = () => {
+            if (gameStore.room?.state) {
+                const state = gameStore.room.state as any;
+                setGold({
+                    redGold: state.redGold || 0,
+                    blueGold: state.blueGold || 0
+                });
+            }
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return gold;
 }

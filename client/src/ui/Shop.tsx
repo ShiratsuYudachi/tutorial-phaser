@@ -50,8 +50,15 @@ export const Shop: React.FC = () => {
         }
         return total;
     };
+    
+    // Get player's gold currency (not from inventory)
+    const playerGold = (player as any)?.gold || 0;
 
     const canAfford = (costItemType: ItemType, costCount: number): boolean => {
+        // Gold is now a currency, not an inventory item
+        if (costItemType === ItemType.GOLD_INGOT) {
+            return playerGold >= costCount;
+        }
         return getItemCount(costItemType) >= costCount;
     };
 
@@ -137,7 +144,7 @@ export const Shop: React.FC = () => {
                     fontWeight: 'bold',
                     textShadow: '1px 1px 2px rgba(0, 0, 0, 0.5)'
                 }}>
-                    Your Gold: {getItemCount(ItemType.GOLD_INGOT)}
+                    Your Gold: {playerGold}
                 </span>
             </div>
 
