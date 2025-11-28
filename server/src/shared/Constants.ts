@@ -177,7 +177,7 @@ export const ITEM_DEFINITIONS: Record<ItemType, {
         droppedVisual: { shape: 'square', size: 14, glowSize: 20 }
     },
     [ItemType.DIAMOND]: { 
-        maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:diamond',
+        maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:cut-diamond',
         droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
     },
     // 旧武器类型（保留用于兼容，实际显示为弹药）

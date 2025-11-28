@@ -32,8 +32,14 @@ export class GameScene extends Phaser.Scene {
     // Drop Item Key (Q)
     qKey: Phaser.Input.Keyboard.Key;
     
+    // Melee Attack Key (E)
+    eKey: Phaser.Input.Keyboard.Key;
+    
     // Switch Character Key (Tab)
     tabKey: Phaser.Input.Keyboard.Key;
+
+    // Chat Key (T)
+    tKey: Phaser.Input.Keyboard.Key;
 
     // Dropped Item Renderer
     droppedItemRenderer: DroppedItemRenderer;
@@ -218,9 +224,16 @@ export class GameScene extends Phaser.Scene {
         // Drop item key (Q)
         this.qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
 
+        // Melee attack key (E)
+        this.eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+
         // Switch Character Key (Tab)
         this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
         this.input.keyboard.addCapture('TAB'); // Prevent browser default
+
+        // Chat Key (T)
+        this.tKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
+        // We don't capture T so it can be typed in chat, but we need to handle the open trigger carefully
 
         this.mousePointer = this.input.activePointer;
         
@@ -752,6 +765,15 @@ export class GameScene extends Phaser.Scene {
     update(time: number, delta: number): void {
         if (!this.room) return;
 
+        // Open Chat (T key)
+        if (Phaser.Input.Keyboard.JustDown(this.tKey)) {
+            if (!gameStore.isChatOpen) {
+                gameStore.toggleChat(true);
+                // Clear the input buffer to prevent 't' from being typed immediately
+                // React will handle focus.
+            }
+        }
+
         // Update timers and UI
         this.updateTimers();
         this.updateAirWalls();
@@ -914,6 +936,11 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         
+        // Freeze inputs if chat is open
+        if (gameStore.isChatOpen) {
+            return;
+        }
+        
         const player = this.room.state.entities.get(this.currentPlayerId) as Player;
         if (!player || player.isDead) {
             return;
@@ -945,7 +972,7 @@ export class GameScene extends Phaser.Scene {
         // Action Inputs
         const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
         this.inputPayload.isDown = this.mousePointer.leftButtonDown();  // 左键 - 远程攻击/放置方块
-        this.inputPayload.isRightDown = this.mousePointer.rightButtonDown();  // 右键 - 近战攻击
+        this.inputPayload.isRightDown = this.eKey.isDown;  // E键 - 近战攻击
         this.inputPayload.mouseX = worldPoint.x;
         this.inputPayload.mouseY = worldPoint.y;
         

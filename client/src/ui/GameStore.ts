@@ -43,6 +43,13 @@ class GameStore {
     rematchCountdown: number = 0;
     mySessionId: string = '';
 
+    // Chat state
+    chatMessages: Array<{ sender: string; text: string; teamId: string }> = [];
+    isChatOpen: boolean = false;
+
+    // Notification state
+    notifications: Array<{ id: string; text: string; color: string }> = [];
+
     // Singleton instance
     static instance = new GameStore();
 
@@ -209,6 +216,22 @@ class GameStore {
             this.rematchCountdown = value;
             this.notify();
         });
+        
+        // 6. Listen for chat messages
+        this.room.onMessage("chat_message", (message: { sender: string; text: string; teamId: string }) => {
+            console.log("GameStore: received chat message", message);
+            this.chatMessages.push(message);
+            if (this.chatMessages.length > 50) {
+                this.chatMessages.shift();
+            }
+            this.notify();
+        });
+
+        // 7. Listen for notifications
+        this.room.onMessage("notification", (data: { text: string; color: string }) => {
+            console.log("GameStore: received notification", data);
+            this.addNotification(data.text, data.color);
+        });
     }
 
     subscribe(listener: Listener) {
@@ -333,6 +356,30 @@ class GameStore {
         } else {
             console.error('  ❌ ERROR: No room available!');
         }
+    }
+    
+    // Chat methods
+    toggleChat(isOpen?: boolean) {
+        this.isChatOpen = isOpen !== undefined ? isOpen : !this.isChatOpen;
+        this.notify();
+    }
+
+    sendChatMessage(text: string) {
+        if (this.room) {
+            this.room.send("chat_message", { text });
+        }
+    }
+
+    // Notification methods
+    addNotification(text: string, color: string = '#ffffff') {
+        const id = Math.random().toString(36).substr(2, 9);
+        this.notifications.push({ id, text, color });
+        this.notify();
+        
+        setTimeout(() => {
+            this.notifications = this.notifications.filter(n => n.id !== id);
+            this.notify();
+        }, 3000);
     }
 }
 
@@ -462,4 +509,70 @@ export function useRematchState() {
     }, []);
 
     return state;
+}
+
+export function useChatState() {
+    const [isOpen, setIsOpen] = useState(gameStore.isChatOpen);
+    const [messages, setMessages] = useState(gameStore.chatMessages);
+
+    useEffect(() => {
+        const update = () => {
+            setIsOpen(gameStore.isChatOpen);
+            setMessages([...gameStore.chatMessages]);
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return { isOpen, messages };
+}
+
+export function useNotifications() {
+    const [notifications, setNotifications] = useState(gameStore.notifications);
+
+    useEffect(() => {
+        const update = () => {
+            setNotifications([...gameStore.notifications]);
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return notifications;
+}
+
+export function useTeamKills() {
+    const [kills, setKills] = useState({ redKills: 0, blueKills: 0 });
+
+    useEffect(() => {
+        const update = () => {
+            if (gameStore.room?.state) {
+                const state = gameStore.room.state as any;
+                setKills({
+                    redKills: state.redKills || 0,
+                    blueKills: state.blueKills || 0
+                });
+            }
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return kills;
+}
+
+export function useTeamGold() {
+    const [gold, setGold] = useState({ redGold: 0, blueGold: 0 });
+
+    useEffect(() => {
+        const update = () => {
+            if (gameStore.room?.state) {
+                const state = gameStore.room.state as any;
+                setGold({
+                    redGold: state.redGold || 0,
+                    blueGold: state.blueGold || 0
+                });
+            }
+        };
+        return gameStore.subscribe(update);
+    }, []);
+
+    return gold;
 }

@@ -58,6 +58,9 @@ export class Player extends HealthEntity {
     @type("number") deaths: number = 0;
     @type("number") damageDealt: number = 0;
     
+    // Player Currency (not in inventory)
+    @type("number") gold: number = 0;
+    
     // Player Info
     @type("string") username: string = "";
 
@@ -116,4 +119,10 @@ export class GameState extends Schema {
     // Rematch System
     @type({ map: "boolean" }) rematchReady = new MapSchema<boolean>(); // sessionId -> ready
     @type("number") rematchCountdown: number = 0; // 0 = not started, >0 = countdown seconds
+    
+    // Team Statistics
+    @type("number") redKills: number = 0;
+    @type("number") blueKills: number = 0;
+    @type("number") redGold: number = 0;
+    @type("number") blueGold: number = 0;
 }
