@@ -135,59 +135,50 @@ class GameStore {
             this.notify();
         });
 
+        // Helper to setup inventory item listeners
+        const setupInventoryListeners = (player: Player) => {
+            if (!player.inventory) return;
+            
+            // Setup listeners for all items in inventory
+            for (let i = 0; i < player.inventory.length; i++) {
+                const item = player.inventory[i];
+                if (item) {
+                    $(item).onChange(() => {
+                        this.notify();
+                    });
+                }
+            }
+        };
+
         // Helper to setup player listeners
         const setupPlayerListeners = (player: Player, id: string) => {
-             // Listen to property changes
-             $(player).onChange(() => {
-                 if (player.isActive && this.currentPlayerId !== id) {
-                     this.currentPlayerId = id;
-                     this.notify();
-                 }
-                 console.log("GameStore: player changed");
-                 this.notify();
-             });
-
-             // Listen to inventory changes using direct callbacks
-             if (player.inventory) {
-                 // Listen for new items (or initial items) in the array
-                 // Cast to extended interface to access onAdd/onRemove
-                 // We use a type assertion here because the official type definitions for ArraySchema 
-                 // in the client context might not fully expose these callback registration methods,
-                 // but they are available at runtime for handling collection changes.
-                 type ArraySchemaWithCallbacks<T> = ArraySchema<T> & {
-                     onAdd: (callback: (item: T, key: number) => void) => void;
-                     onRemove: (callback: (item: T, key: number) => void) => void;
-                     onChange: (callback: (item: T, key: number) => void) => void;
-                 };
-
-                 const inventory = player.inventory as unknown as ArraySchemaWithCallbacks<InventoryItem>;
-                 
-                 inventory.onAdd((item: InventoryItem, key: number) => {
-                     // console.log("GameStore: inventory slot populated", key);
-                     this.notify();
-                     
-                     // Listen for changes to the item properties (e.g. count, itemId)
-                     $(item).onChange(() => {
-                         // console.log("GameStore: inventory item updated");
-                         this.notify();
-                     });
-                 });
-
-                 // Listen for removed items
-                 inventory.onRemove(() => {
-                     console.log("GameStore: inventory item removed");
-                     this.notify();
-                 });
-                 
-                 // Do NOT call .onChange on the ArraySchema proxy directly
-             }
+            console.log("GameStore: setupPlayerListeners", player);
+            
+            // Setup initial inventory listeners
+            setupInventoryListeners(player);
+            
+            // Listen to property changes (this will also fire when inventory structure changes)
+            $(player).onChange(() => {
+                if (player.isActive && this.currentPlayerId !== id) {
+                    this.currentPlayerId = id;
+                    this.notify();
+                }
+                
+                // Re-setup inventory listeners in case new items were added
+                // This ensures new items also get onChange listeners
+                setupInventoryListeners(player);
+                
+                console.log("GameStore: player changed");
+                this.notify();
+            });
         };
 
         // 1. Check existing entities for active player
         this.room.state.entities.forEach((entity: Entity, id: string) => {
-            if (entity instanceof Player && entity.ownerSessionId === this.room!.sessionId) {
-                setupPlayerListeners(entity, id);
-                if (entity.isActive) {
+            // Use type check instead of instanceof (Colyseus client Schema objects may not be true instances)
+            if (entity.type === 'player' && (entity as Player).ownerSessionId === this.room!.sessionId) {
+                setupPlayerListeners(entity as Player, id);
+                if ((entity as Player).isActive) {
                     this.currentPlayerId = id;
                     console.log("GameStore: Found initial active player", id);
                     this.notify();
@@ -197,11 +188,12 @@ class GameStore {
 
         // 2. Listen for new entities
         $(this.room.state).entities.onAdd((entity: Entity, id: string) => {
-            console.log("GameStore: entity added", id);
+            console.log("GameStore: entity added", id, "type:", entity.type);
             
-            if (entity instanceof Player && entity.ownerSessionId === this.room!.sessionId) {
-                 setupPlayerListeners(entity, id);
-                 if (entity.isActive) {
+            // Use type check instead of instanceof (Colyseus client Schema objects may not be true instances)
+            if (entity.type === 'player' && (entity as Player).ownerSessionId === this.room!.sessionId) {
+                 setupPlayerListeners(entity as Player, id);
+                 if ((entity as Player).isActive) {
                      this.currentPlayerId = id;
                      this.notify();
                  }
