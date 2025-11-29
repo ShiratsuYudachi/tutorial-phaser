@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Icon } from '@iconify/react';
 import { Client, Room, getStateCallbacks } from 'colyseus.js';
 import { Schema, MapSchema, type } from '@colyseus/schema';
 import { BACKEND_URL, BACKEND_HTTP_URL } from '../backend';
+import { Settings } from './Settings';
 
 interface User {
     userId: string;
@@ -64,6 +66,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
     const [lobbyStatus, setLobbyStatus] = useState<string>('waiting');
     const [chatMessages, setChatMessages] = useState<Array<{ username: string; message: string }>>([]);
     const [chatInput, setChatInput] = useState('');
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     // Check for stored user on mount
     useEffect(() => {
@@ -351,7 +354,36 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
     if (pageState === 'landing') {
         return (
             <div style={containerStyle}>
-                <div style={cardStyle}>
+               	{/* Settings Button */}
+               	<button
+                   	onClick={() => setIsSettingsOpen(true)}
+                   	style={{
+                       	position: 'fixed',
+                       	top: '20px',
+                       	right: '20px',
+                       	padding: '10px 15px',
+                       	background: 'rgba(255, 255, 255, 0.1)',
+                       	border: '1px solid rgba(255, 255, 255, 0.2)',
+                       	borderRadius: '8px',
+                       	color: '#ffffff',
+                       	cursor: 'pointer',
+                       	fontSize: '16px',
+                       	display: 'flex',
+                       	alignItems: 'center',
+                       	gap: '8px',
+                       	transition: 'background 0.2s',
+                       	zIndex: 1000
+                   	}}
+                   	onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
+                   	onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+               	>
+                   	<Icon icon="mdi:cog" width="20" height="20" />
+                   	Settings
+               	</button>
+
+               	<Settings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+               	<div style={cardStyle}>
                     {/* Logo/Title */}
                     <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                         <h1 style={{ 
