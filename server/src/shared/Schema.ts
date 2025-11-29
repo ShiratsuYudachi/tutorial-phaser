@@ -100,6 +100,10 @@ export class ResourceGenerator extends Entity {
     @type("number") nearbyDropCount: number = 0;
 }
 
+export class RematchPlayer extends Schema {
+    @type("boolean") isReady: boolean = false;
+}
+
 export class GameState extends Schema {
     @type("number") mapWidth: number;
     @type("number") mapHeight: number;
@@ -120,7 +124,7 @@ export class GameState extends Schema {
     @type("boolean") isFrozen: boolean = false;
     
     // Rematch System
-    @type({ map: "boolean" }) rematchReady = new MapSchema<boolean>(); // sessionId -> ready
+    @type({ map: RematchPlayer }) rematchReady = new MapSchema<RematchPlayer>(); // sessionId -> ready state object
     @type("number") rematchCountdown: number = 0; // 0 = not started, >0 = countdown seconds
     
     // Team Statistics

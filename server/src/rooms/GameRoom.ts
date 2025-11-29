@@ -1,6 +1,6 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
-import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem, DroppedItem, ResourceGenerator } from "../shared/Schema";
+import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem, DroppedItem, ResourceGenerator, RematchPlayer } from "../shared/Schema";
 import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, MELEE_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, isAmmo, isMelee, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
@@ -351,7 +351,9 @@ export class GameRoom extends Room<GameState> {
             }
 
             // Mark player as ready
-            this.state.rematchReady.set(client.sessionId, true);
+            const rematchPlayer = new RematchPlayer();
+            rematchPlayer.isReady = true;
+            this.state.rematchReady.set(client.sessionId, rematchPlayer);
             console.log(`  SUCCESS: ${client.sessionId} marked as ready`);
             console.log('  Updated rematchReady:', Array.from(this.state.rematchReady.entries()));
 
@@ -1664,7 +1666,8 @@ export class GameRoom extends Room<GameState> {
         // Check if all players are ready
         let allReady = true;
         for (const sessionId of activeSessions) {
-            const isReady = this.state.rematchReady.get(sessionId);
+            const playerState = this.state.rematchReady.get(sessionId);
+            const isReady = playerState ? playerState.isReady : false;
             console.log(`  Checking ${sessionId}: ready = ${isReady}`);
             if (!isReady) {
                 allReady = false;

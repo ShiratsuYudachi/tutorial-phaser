@@ -1,6 +1,6 @@
 import { Client, Room, getStateCallbacks } from "colyseus.js";
 import { ArraySchema } from "@colyseus/schema";
-import { GameState, Player, Entity, InventoryItem } from "../../../server/src/shared/Schema";
+import { GameState, Player, Entity, InventoryItem, RematchPlayer } from "../../../server/src/shared/Schema";
 import { BACKEND_URL } from "../backend";
 import { useState, useEffect } from "react";
 
@@ -210,26 +210,27 @@ class GameStore {
         
         // 3. Sync existing rematchReady values first
         if (this.room.state.rematchReady) {
-            this.room.state.rematchReady.forEach((value: boolean, sessionId: string) => {
-                console.log('GameStore: initial sync rematchReady', sessionId, '=', value);
-                this.rematchReady.set(sessionId, value);
+            this.room.state.rematchReady.forEach((playerState: RematchPlayer, sessionId: string) => {
+                console.log('GameStore: initial sync rematchReady', sessionId, '=', playerState.isReady);
+                this.rematchReady.set(sessionId, playerState.isReady);
             });
         }
         
         // 4. Listen for rematch state changes using the correct $ callbacks API
-        $(this.room.state).rematchReady.onAdd((value: boolean, sessionId: string) => {
-            console.log('GameStore: rematchReady.onAdd', sessionId, '=', value);
-            this.rematchReady.set(sessionId, value);
+        $(this.room.state).rematchReady.onAdd((playerState: RematchPlayer, sessionId: string) => {
+            console.log('GameStore: rematchReady.onAdd', sessionId, '=', playerState.isReady);
+            this.rematchReady.set(sessionId, playerState.isReady);
             this.notify();
+
+            // Listen for changes on the Schema object (this IS supported by Proxy)
+            $(playerState).onChange(() => {
+                console.log('GameStore: rematchReady.onChange', sessionId, '=', playerState.isReady);
+                this.rematchReady.set(sessionId, playerState.isReady);
+                this.notify();
+            });
         });
         
-        $(this.room.state).rematchReady.onChange((value: boolean, sessionId: string) => {
-            console.log('GameStore: rematchReady.onChange', sessionId, '=', value);
-            this.rematchReady.set(sessionId, value);
-            this.notify();
-        });
-        
-        $(this.room.state).rematchReady.onRemove((value: boolean, sessionId: string) => {
+        $(this.room.state).rematchReady.onRemove((_, sessionId: string) => {
             console.log('GameStore: rematchReady.onRemove', sessionId);
             this.rematchReady.delete(sessionId);
             this.notify();
