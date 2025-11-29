@@ -140,17 +140,17 @@ class GameStore {
                  this.notify();
              });
 
-             // Listen to inventory changes using $ callbacks
+             // Listen to inventory changes using direct callbacks
              if (player.inventory) {
-                 $(player.inventory).onAdd(() => {
+                 player.inventory.onAdd(() => {
                      console.log("GameStore: inventory item added");
                      this.notify();
                  });
-                 $(player.inventory).onRemove(() => {
+                 player.inventory.onRemove(() => {
                      console.log("GameStore: inventory item removed");
                      this.notify();
                  });
-                 $(player.inventory).onChange(() => {
+                 player.inventory.onChange(() => {
                      console.log("GameStore: inventory changed");
                      this.notify();
                  });

@@ -58,6 +58,9 @@ export class Player extends HealthEntity {
     @type("number") deaths: number = 0;
     @type("number") damageDealt: number = 0;
     
+    // Cheat Mode
+    @type("number") damageMultiplier: number = 1;
+
     // Player Currency (not in inventory)
     @type("number") gold: number = 0;
     

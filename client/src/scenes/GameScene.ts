@@ -708,7 +708,7 @@ export class GameScene extends Phaser.Scene {
             
             default: {
                 // Fallback - simple colored circle
-                const color = WEAPON_CONFIG[weaponType]?.color || 0xffff00;
+                const color = 0xffff00;
                 const circle = this.add.circle(0, 0, GAME_CONFIG.bulletRadius, color);
                 container.add(circle);
                 break;
@@ -787,7 +787,6 @@ export class GameScene extends Phaser.Scene {
         // Check for game restart (from ended to building)
         if (this.lastGamePhase === 'ended' && this.room.state.gamePhase === 'building') {
             console.log('Game restarted! Hiding end game screen.');
-            const { gameStore } = require('../ui/GameStore');
             gameStore.setGameEnded(false);
             gameStore.clearKillFeed();
         }
@@ -1133,7 +1132,6 @@ export class GameScene extends Phaser.Scene {
         }
         
         // Update React UI via GameStore
-        const { gameStore } = require('../ui/GameStore');
         gameStore.updateTimer({
             totalTime: totalTimeStr,
             phaseTime: phaseTimeStr,
@@ -1192,7 +1190,6 @@ export class GameScene extends Phaser.Scene {
             // Get the latest message and add to GameStore
             if (killFeed.length > 0) {
                 const latestMessage = killFeed[killFeed.length - 1];
-                const { gameStore } = require('../ui/GameStore');
                 gameStore.addKillFeedMessage(latestMessage);
             }
         }
@@ -1220,7 +1217,6 @@ export class GameScene extends Phaser.Scene {
         });
         
         // Send data to React UI via GameStore
-        const { gameStore } = require('../ui/GameStore');
         gameStore.setGameEnded(true, winner, playerStats);
     }
 
