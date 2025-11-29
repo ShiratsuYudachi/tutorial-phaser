@@ -14,6 +14,9 @@ import { AuthService } from "./services/AuthService";
 let gameServerRef: Server;
 let latencySimulationMs: number = 0;
 
+// Store original listen method
+let originalListen: any;
+
 export default config({
     options: {
         // devMode: true,
@@ -31,6 +34,14 @@ export default config({
         // call `.simulateLatency()` later through an http route
         //
         gameServerRef = gameServer;
+        
+        // Override listen method to support hostname
+        originalListen = gameServer.listen.bind(gameServer);
+        const hostname = process.env.HOST || "0.0.0.0";
+        gameServer.listen = function(port: number) {
+            // Call original listen with hostname
+            return originalListen(port, hostname);
+        };
     },
 
     initializeExpress: (app) => {
