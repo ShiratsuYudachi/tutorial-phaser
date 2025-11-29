@@ -1,10 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Client, Room, getStateCallbacks } from 'colyseus.js';
+import { Schema, MapSchema, type } from '@colyseus/schema';
 import { BACKEND_URL, BACKEND_HTTP_URL } from '../backend';
 
 interface User {
     userId: string;
     username: string;
+}
+
+// Define Lobby State Schema locally since it's not in shared
+class LobbyPlayerSchema extends Schema {
+    @type("string") username: string = "";
+    @type("boolean") isReady: boolean = false;
+    @type("string") teamPreference: string = "";
+}
+
+class LobbyState extends Schema {
+    @type({ map: LobbyPlayerSchema }) players = new MapSchema<LobbyPlayerSchema>();
+    @type("number") countdown: number = 0;
+    @type("string") status: string = "";
 }
 
 interface LobbyPlayer {
@@ -19,6 +33,17 @@ interface FrontPageProps {
 
 type PageState = 'landing' | 'login' | 'register' | 'lobby';
 
+interface LobbyPlayerSchema {
+    username: string;
+    isReady: boolean;
+    teamPreference: string;
+}
+
+interface GameStartingData {
+    roomId: string;
+    teams: { sessionId: string; username: string; team: string }[];
+}
+
 export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
     const [pageState, setPageState] = useState<PageState>('landing');
     const [user, setUser] = useState<User | null>(null);
@@ -31,7 +56,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
     const [confirmPassword, setConfirmPassword] = useState('');
     
     // Lobby states
-    const [lobbyRoom, setLobbyRoom] = useState<Room | null>(null);
+    const [lobbyRoom, setLobbyRoom] = useState<Room<LobbyState> | null>(null);
     const [lobbyPlayers, setLobbyPlayers] = useState<Map<string, LobbyPlayer>>(new Map());
     const [isReady, setIsReady] = useState(false);
     const [teamPreference, setTeamPreference] = useState<string>('any');
@@ -140,7 +165,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
 
         try {
             const client = new Client(BACKEND_URL);
-            const room = await client.joinOrCreate('lobby_room', {
+            const room = await client.joinOrCreate<LobbyState>('lobby_room', {
                 username: user.username,
                 userId: user.userId
             });
@@ -152,7 +177,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
             const $ = getStateCallbacks(room);
 
             // Listen for player updates
-            $(room.state).players.onAdd((player: any, sessionId: string) => {
+            $(room.state).players.onAdd((player: LobbyPlayerSchema, sessionId: string) => {
                 setLobbyPlayers(prev => {
                     const next = new Map(prev);
                     next.set(sessionId, {
@@ -177,7 +202,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
                 });
             });
 
-            $(room.state).players.onRemove((player: any, sessionId: string) => {
+            $(room.state).players.onRemove((player: LobbyPlayerSchema, sessionId: string) => {
                 setLobbyPlayers(prev => {
                     const next = new Map(prev);
                     next.delete(sessionId);
@@ -200,7 +225,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
             });
 
             // Listen for game start
-            room.onMessage("game_starting", (data: { roomId: string; teams: any[] }) => {
+            room.onMessage("game_starting", (data: GameStartingData) => {
                 const myTeam = data.teams.find(t => t.sessionId === room.sessionId);
                 onGameStart({
                     username: user.username,

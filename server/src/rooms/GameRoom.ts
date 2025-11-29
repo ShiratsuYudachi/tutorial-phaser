@@ -23,7 +23,7 @@ export class GameRoom extends Room<GameState> {
     // 队伍分配
     teamAssignments: string[] = []; // 按加入顺序: [红队sessionId, 蓝队sessionId]
 
-    onCreate(options: any) {
+    onCreate(options: { username?: string }) {
         this.setState(new GameState());
         this.state.mapWidth = GAME_CONFIG.mapWidth;
         this.state.mapHeight = GAME_CONFIG.mapHeight;
@@ -189,28 +189,28 @@ export class GameRoom extends Room<GameState> {
             });
         });
 
-        // Inventory Actions
-        this.onMessage("inventory_action", (client, data: any) => {
-            const activeCharacterId = this.getActiveCharacterId(client.sessionId);
-            if (!activeCharacterId) return;
-            const player = this.state.entities.get(activeCharacterId) as Player;
-            if (!player) return;
+    // Inventory Actions
+    this.onMessage("inventory_action", (client, data: { type: string; index?: number; fromIndex?: number; toIndex?: number }) => {
+        const activeCharacterId = this.getActiveCharacterId(client.sessionId);
+        if (!activeCharacterId) return;
+        const player = this.state.entities.get(activeCharacterId) as Player;
+        if (!player) return;
 
-            if (data.type === "select") {
-                const slotIndex = data.index;
-                if (slotIndex >= 0 && slotIndex < player.inventory.length) {
-                    player.selectedSlot = slotIndex;
-                    console.log(`Player ${client.sessionId} selected slot ${slotIndex}`);
-                }
-            } else if (data.type === "swap") {
-                const { fromIndex, toIndex } = data;
-                
-                // Validate indices
-                if (fromIndex < 0 || fromIndex >= player.inventory.length ||
-                    toIndex < 0 || toIndex >= player.inventory.length) {
-                    console.warn(`Invalid swap indices: ${fromIndex} -> ${toIndex}`);
-                    return;
-                }
+        if (data.type === "select" && typeof data.index === 'number') {
+            const slotIndex = data.index;
+            if (slotIndex >= 0 && slotIndex < player.inventory.length) {
+                player.selectedSlot = slotIndex;
+                console.log(`Player ${client.sessionId} selected slot ${slotIndex}`);
+            }
+        } else if (data.type === "swap" && typeof data.fromIndex === 'number' && typeof data.toIndex === 'number') {
+            const { fromIndex, toIndex } = data;
+            
+            // Validate indices
+            if (fromIndex < 0 || fromIndex >= player.inventory.length ||
+                toIndex < 0 || toIndex >= player.inventory.length) {
+                console.warn(`Invalid swap indices: ${fromIndex} -> ${toIndex}`);
+                return;
+            }
                 
                 // Get items (may be undefined for empty slots)
                 const itemA = player.inventory[fromIndex];
@@ -955,7 +955,7 @@ export class GameRoom extends Room<GameState> {
         console.log(`Player ${sessionId} (${player.teamId}) respawned at team spawn`);
     }
 
-    onJoin(client: Client, options: any) {
+    onJoin(client: Client, options: { username?: string }) {
         console.log(client.sessionId, "joined!");
         
         const username = options.username || "Guest";

@@ -869,7 +869,7 @@ export class GameScene extends Phaser.Scene {
                      
                      // Check if position is already occupied by another block
                      let isOccupied = false;
-                     this.room.state.entities.forEach((entity: any) => {
+                     this.room.state.entities.forEach((entity: Entity) => {
                          if (entity.type === 'block') {
                              const dx = Math.abs(entity.x - gridX);
                              const dy = Math.abs(entity.y - gridY);
@@ -1201,10 +1201,17 @@ export class GameScene extends Phaser.Scene {
         const winner = this.room.state.winner;
         
         // Collect player stats
-        const playerStats: any[] = [];
-        this.room.state.entities.forEach((entity, id) => {
-            if (entity.type === 'player') {
-                const player = entity as any;
+        const playerStats: Array<{
+            id: string;
+            username: string;
+            kills: number;
+            deaths: number;
+            damage: number;
+            teamId: string;
+        }> = [];
+        this.room.state.entities.forEach((entity: Entity, id: string) => {
+            if (entity.type === 'player' && entity instanceof Player) {
+                const player = entity as Player;
                 playerStats.push({
                     id,
                     username: player.username || id.substring(0, 8),

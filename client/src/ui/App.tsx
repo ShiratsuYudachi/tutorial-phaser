@@ -294,7 +294,7 @@ export function App() {
     const currentPlayer = useCurrentPlayer();
     
     // Get current player's own gold (not team gold)
-    const myGold = (currentPlayer as any)?.gold || 0;
+    const myGold = currentPlayer?.gold || 0;
 
     const handleOpenShop = () => {
         gameStore.openShop();

@@ -1,1 +1,14 @@
-{"users":[]}
+{
+  "users": [
+    {
+      "id": "e2b68d51-63a6-4ac8-8a58-8cbcfd51be18",
+      "username": "testuser",
+      "passwordHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+      "createdAt": "2025-11-29T14:12:56.332Z",
+      "totalKills": 0,
+      "totalDeaths": 0,
+      "totalDamage": 0,
+      "gamesPlayed": 0
+    }
+  ]
+}

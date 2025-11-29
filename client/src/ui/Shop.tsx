@@ -52,7 +52,7 @@ export const Shop: React.FC = () => {
     };
     
     // Get player's gold currency (not from inventory)
-    const playerGold = (player as any)?.gold || 0;
+    const playerGold = player?.gold || 0;
 
     const canAfford = (costItemType: ItemType, costCount: number): boolean => {
         // Gold is now a currency, not an inventory item

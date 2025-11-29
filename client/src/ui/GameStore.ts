@@ -1,5 +1,6 @@
 import { Client, Room, getStateCallbacks } from "colyseus.js";
-import { GameState, Player } from "../../../server/src/shared/Schema";
+import { ArraySchema } from "@colyseus/schema";
+import { GameState, Player, Entity, InventoryItem } from "../../../server/src/shared/Schema";
 import { BACKEND_URL } from "../backend";
 import { useState, useEffect } from "react";
 
@@ -64,7 +65,13 @@ class GameStore {
         }
 
         // Get player info from window if available
-        const playerInfo = (window as any).playerInfo || {};
+        interface WindowWithPlayerInfo extends Window {
+            playerInfo?: {
+                username?: string;
+                userId?: string;
+            };
+        }
+        const playerInfo = (window as WindowWithPlayerInfo).playerInfo || {};
         const joinOptions = {
             username: options?.username || playerInfo.username || 'Guest',
             userId: options?.userId || playerInfo.userId || ''
@@ -129,7 +136,7 @@ class GameStore {
         });
 
         // Helper to setup player listeners
-        const setupPlayerListeners = (player: any, id: string) => {
+        const setupPlayerListeners = (player: Player, id: string) => {
              // Listen to property changes
              $(player).onChange(() => {
                  if (player.isActive && this.currentPlayerId !== id) {
@@ -142,24 +149,43 @@ class GameStore {
 
              // Listen to inventory changes using direct callbacks
              if (player.inventory) {
-                 player.inventory.onAdd(() => {
-                     console.log("GameStore: inventory item added");
+                 // Listen for new items (or initial items) in the array
+                 // Cast to extended interface to access onAdd/onRemove
+                 // We use a type assertion here because the official type definitions for ArraySchema 
+                 // in the client context might not fully expose these callback registration methods,
+                 // but they are available at runtime for handling collection changes.
+                 type ArraySchemaWithCallbacks<T> = ArraySchema<T> & {
+                     onAdd: (callback: (item: T, key: number) => void) => void;
+                     onRemove: (callback: (item: T, key: number) => void) => void;
+                     onChange: (callback: (item: T, key: number) => void) => void;
+                 };
+
+                 const inventory = player.inventory as unknown as ArraySchemaWithCallbacks<InventoryItem>;
+                 
+                 inventory.onAdd((item: InventoryItem, key: number) => {
+                     // console.log("GameStore: inventory slot populated", key);
                      this.notify();
+                     
+                     // Listen for changes to the item properties (e.g. count, itemId)
+                     $(item).onChange(() => {
+                         // console.log("GameStore: inventory item updated");
+                         this.notify();
+                     });
                  });
-                 player.inventory.onRemove(() => {
+
+                 // Listen for removed items
+                 inventory.onRemove(() => {
                      console.log("GameStore: inventory item removed");
                      this.notify();
                  });
-                 player.inventory.onChange(() => {
-                     console.log("GameStore: inventory changed");
-                     this.notify();
-                 });
+                 
+                 // Do NOT call .onChange on the ArraySchema proxy directly
              }
         };
 
         // 1. Check existing entities for active player
-        this.room.state.entities.forEach((entity: any, id: string) => {
-            if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
+        this.room.state.entities.forEach((entity: Entity, id: string) => {
+            if (entity instanceof Player && entity.ownerSessionId === this.room!.sessionId) {
                 setupPlayerListeners(entity, id);
                 if (entity.isActive) {
                     this.currentPlayerId = id;
@@ -170,10 +196,10 @@ class GameStore {
         });
 
         // 2. Listen for new entities
-        $(this.room.state).entities.onAdd((entity: any, id: string) => {
+        $(this.room.state).entities.onAdd((entity: Entity, id: string) => {
             console.log("GameStore: entity added", id);
             
-            if (entity.type === 'player' && entity.ownerSessionId === this.room!.sessionId) {
+            if (entity instanceof Player && entity.ownerSessionId === this.room!.sessionId) {
                  setupPlayerListeners(entity, id);
                  if (entity.isActive) {
                      this.currentPlayerId = id;
@@ -183,9 +209,8 @@ class GameStore {
         });
         
         // 3. Sync existing rematchReady values first
-        const state = this.room.state as any;
-        if (state.rematchReady) {
-            state.rematchReady.forEach((value: boolean, sessionId: string) => {
+        if (this.room.state.rematchReady) {
+            this.room.state.rematchReady.forEach((value: boolean, sessionId: string) => {
                 console.log('GameStore: initial sync rematchReady', sessionId, '=', value);
                 this.rematchReady.set(sessionId, value);
             });
@@ -305,7 +330,14 @@ class GameStore {
     }
 
     // Game ended methods
-    setGameEnded(ended: boolean, winner?: string, playerStats?: Array<any>) {
+    setGameEnded(ended: boolean, winner?: string, playerStats?: Array<{
+        id: string;
+        username: string;
+        kills: number;
+        deaths: number;
+        damage: number;
+        teamId: string;
+    }>) {
         this.isGameEnded = ended;
         if (winner) {
             this.gameWinner = winner;
@@ -331,8 +363,8 @@ class GameStore {
         console.log('  mySessionId:', this.mySessionId);
         console.log('  room exists:', !!this.room);
         
-        if (this.room) {
-            const gamePhase = (this.room.state as any)?.gamePhase;
+        if (this.room && this.room.state) {
+            const gamePhase = this.room.state.gamePhase;
             console.log('  Current gamePhase:', gamePhase);
             
             if (gamePhase !== 'ended') {
@@ -545,10 +577,9 @@ export function useTeamKills() {
     useEffect(() => {
         const update = () => {
             if (gameStore.room?.state) {
-                const state = gameStore.room.state as any;
                 setKills({
-                    redKills: state.redKills || 0,
-                    blueKills: state.blueKills || 0
+                    redKills: gameStore.room.state.redKills || 0,
+                    blueKills: gameStore.room.state.blueKills || 0
                 });
             }
         };
@@ -564,10 +595,9 @@ export function useTeamGold() {
     useEffect(() => {
         const update = () => {
             if (gameStore.room?.state) {
-                const state = gameStore.room.state as any;
                 setGold({
-                    redGold: state.redGold || 0,
-                    blueGold: state.blueGold || 0
+                    redGold: gameStore.room.state.redGold || 0,
+                    blueGold: gameStore.room.state.blueGold || 0
                 });
             }
         };
