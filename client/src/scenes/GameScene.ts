@@ -57,6 +57,10 @@ export class GameScene extends Phaser.Scene {
     fireballShootSound: Phaser.Sound.BaseSound;
     dartShootSound: Phaser.Sound.BaseSound;
     placeBlockSound: Phaser.Sound.BaseSound;
+    meleeSound: Phaser.Sound.BaseSound;
+    tntFuseSound: Phaser.Sound.BaseSound;
+    explosionSound: Phaser.Sound.BaseSound;
+    
     lastMouseDown: boolean = false;
     
     // New UI Elements for game phases and stats
@@ -82,9 +86,6 @@ export class GameScene extends Phaser.Scene {
     fixedTimeStep = 1000 / 60;
     
     // 近战攻击相关
-    meleeSound: Phaser.Sound.BaseSound;
-    tntFuseSound: Phaser.Sound.BaseSound;
-    explosionSound: Phaser.Sound.BaseSound;
     meleeSwingGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
 
     constructor() { super({ key: "game" }); }
@@ -371,17 +372,48 @@ export class GameScene extends Phaser.Scene {
         }
     }
     
-    playMeleeSound() {
+    playSoundAt(x: number, y: number, key: string, baseVolume: number = 1.0) {
+        const camera = this.cameras.main;
+        const cameraCenter = new Phaser.Math.Vector2(camera.midPoint.x, camera.midPoint.y);
+        const sourcePos = new Phaser.Math.Vector2(x, y);
+        
+        const distance = cameraCenter.distance(sourcePos);
+        const maxAudibleDistance = 1000; // Sounds fade out completely at this distance
+        
+        if (distance < maxAudibleDistance) {
+            // Linear attenuation
+            // Clamp volume between 0 and 1
+            const volume = Math.max(0, Math.min(1, 1 - (distance / maxAudibleDistance))) * baseVolume;
+            
+            if (volume > 0.01) {
+                this.sound.play(key, { volume: volume });
+            }
+        }
+    }
+
+    playMeleeSound(x: number, y: number) {
         if (this.meleeSound) {
-            this.meleeSound.play();
+            this.playSoundAt(x, y, 'melee', 0.5);
         }
     }
     
-    playWeaponSound(weaponType: WeaponItem) {
+    playWeaponSound(weaponType: WeaponItem, x: number, y: number) {
         switch(weaponType) {
-            case ItemType.BOW: if (this.bowShootSound) this.bowShootSound.play(); break;
-            case ItemType.FIREBALL: if (this.fireballShootSound) this.fireballShootSound.play(); break;
-            case ItemType.DART: if (this.dartShootSound) this.dartShootSound.play(); break;
+            case ItemType.BOW: 
+                if (this.bowShootSound) this.playSoundAt(x, y, 'bow_shoot', 0.35);
+                break;
+            case ItemType.FIREBALL: 
+                if (this.fireballShootSound) this.playSoundAt(x, y, 'fireball_shoot', 0.4);
+                break;
+            case ItemType.DART: 
+                if (this.dartShootSound) this.playSoundAt(x, y, 'dart_shoot', 0.3);
+                break;
+        }
+    }
+
+    playPlaceBlockSound(x: number, y: number) {
+        if (this.placeBlockSound) {
+            this.playSoundAt(x, y, 'place', 0.4);
         }
     }
 
@@ -405,7 +437,7 @@ export class GameScene extends Phaser.Scene {
             this.room.onMessage("explosion", (data: { x: number, y: number, radius: number }) => {
                 // Play Explosion Sound
                 if (this.explosionSound) {
-                    this.explosionSound.play();
+                    this.playSoundAt(data.x, data.y, 'explosion', 0.6);
                 }
 
                 // Visual explosion
@@ -450,11 +482,12 @@ export class GameScene extends Phaser.Scene {
                     visual = this.createBullet(entity as Bullet);
                     
                     const bullet = entity as Bullet;
-                    if (bullet.ownerId === this.currentPlayerId) {
-                        this.playWeaponSound(bullet.weaponType as WeaponItem);
-                    }
+                    // Play sound for all bullets, using spatial audio
+                    this.playWeaponSound(bullet.weaponType as WeaponItem, bullet.x, bullet.y);
                 } else if (entity instanceof Block || entity.type === 'block') {
                     visual = this.createBlock(entity as Block);
+                    // Play placement sound for all new blocks
+                    this.playPlaceBlockSound(entity.x, entity.y);
                 } else if (entity instanceof Bed || entity.type === 'bed') {
                     visual = this.createBed(entity as Bed);
                 } else if (entity.type === 'dropped_item') {
@@ -640,10 +673,8 @@ export class GameScene extends Phaser.Scene {
             // 开始近战动画
             const meleeAngle = player.meleeAngle;
             
-            // 播放近战音效（只为自己播放）
-            if (player.ownerSessionId === this.room.sessionId && player.isActive) {
-                this.playMeleeSound();
-            }
+            // 播放近战音效（为所有玩家播放）
+            this.playMeleeSound(player.x, player.y);
             
             // 绘制挥砍弧线
             meleeSwing.clear();
@@ -892,7 +923,7 @@ export class GameScene extends Phaser.Scene {
             
             // Play Fuse Sound
             if (this.tntFuseSound) {
-                this.tntFuseSound.play();
+                this.playSoundAt(block.x, block.y, 'tnt_fuse', 0.4);
             }
         }
         
