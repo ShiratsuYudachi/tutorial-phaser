@@ -164,7 +164,7 @@ const EndGameScreen: React.FC = () => {
                             justifyContent: 'space-between',
                             paddingRight: '10px'
                         }}>
-                            <span>{player.username.substring(0, 10)}</span>
+                            <span>{(player.username || 'Unknown').substring(0, 10)}</span>
                             <span>{player.kills}  {player.deaths}  {player.damage}</span>
                         </div>
                     ))}

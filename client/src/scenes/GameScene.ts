@@ -1210,7 +1210,8 @@ export class GameScene extends Phaser.Scene {
             teamId: string;
         }> = [];
         this.room.state.entities.forEach((entity: Entity, id: string) => {
-            if (entity.type === 'player' && entity instanceof Player) {
+            // Use type check instead of instanceof (Colyseus client Schema objects may not be true instances)
+            if (entity.type === 'player') {
                 const player = entity as Player;
                 playerStats.push({
                     id,

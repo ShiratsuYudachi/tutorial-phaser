@@ -495,6 +495,12 @@ export class GameRoom extends Room<GameState> {
                     
                     // 扣血
                     bed.hp -= bullet.damage;
+                    
+                    // 追踪伤害统计
+                    if (shooter) {
+                        shooter.damageDealt += bullet.damage;
+                    }
+                    
                     console.log(`Bed ${teamId} hit, HP: ${bed.hp}/${bed.maxHP}`);
                     
                     // 床被破坏
@@ -856,6 +862,10 @@ export class GameRoom extends Room<GameState> {
             
             // 命中床
             bed.hp -= damage;
+            
+            // 追踪伤害统计
+            attacker.damageDealt += damage;
+            
             console.log(`Melee hit bed ${bed.teamId}! HP: ${bed.hp}/${bed.maxHP}`);
             
             if (bed.hp <= 0) {
