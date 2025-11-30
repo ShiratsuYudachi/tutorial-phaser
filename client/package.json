@@ -13,6 +13,9 @@
   ],
   "author": "Endel Dreyer",
   "license": "MIT",
+  "alias": {
+    "process": false
+  },
   "devDependencies": {
     "buffer": "^6.0.3",
     "parcel": "^2.4.0",
