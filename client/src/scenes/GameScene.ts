@@ -1363,29 +1363,41 @@ export class GameScene extends Phaser.Scene {
         
         const winner = this.room.state.winner;
         
-        // Collect player stats
-        const playerStats: Array<{
+        // Collect and aggregate player stats
+        const statsMap = new Map<string, {
             id: string;
             username: string;
             kills: number;
             deaths: number;
             damage: number;
             teamId: string;
-        }> = [];
+        }>();
+
         this.room.state.entities.forEach((entity: Entity, id: string) => {
             // Use type check instead of instanceof (Colyseus client Schema objects may not be true instances)
             if (entity.type === 'player') {
                 const player = entity as Player;
-                playerStats.push({
-                    id,
-                    username: player.username || id.substring(0, 8),
-                    kills: player.kills || 0,
-                    deaths: player.deaths || 0,
-                    damage: player.damageDealt || 0,
-                    teamId: player.teamId
-                });
+                const sessionId = player.ownerSessionId;
+                
+                if (!statsMap.has(sessionId)) {
+                    statsMap.set(sessionId, {
+                        id: sessionId,
+                        username: player.username || sessionId.substring(0, 8),
+                        kills: 0,
+                        deaths: 0,
+                        damage: 0,
+                        teamId: player.teamId
+                    });
+                }
+
+                const stats = statsMap.get(sessionId)!;
+                stats.kills += player.kills || 0;
+                stats.deaths += player.deaths || 0;
+                stats.damage += player.damageDealt || 0;
             }
         });
+        
+        const playerStats = Array.from(statsMap.values());
         
         // Send data to React UI via GameStore
         gameStore.setGameEnded(true, winner, playerStats);
