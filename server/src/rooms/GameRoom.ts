@@ -1101,7 +1101,8 @@ export class GameRoom extends Room<GameState> {
         
         const username = options.username || "Guest";
         
-        const teamId = this.teamAssignments.length === 0 ? TeamType.RED : TeamType.BLUE;
+        // Balanced team assignment: Alternate between RED and BLUE
+        const teamId = this.teamAssignments.length % 2 === 0 ? TeamType.RED : TeamType.BLUE;
         this.teamAssignments.push(client.sessionId);
         
         this.createCharacter(client, teamId, 1, true, username);
@@ -1660,6 +1661,7 @@ export class GameRoom extends Room<GameState> {
         
         this.state.gamePhase = "ended";
         this.state.isFrozen = true; // Freeze game
+        this.lock(); // Prevent new players from joining finished game
         
         if (!this.state.winner) {
             const redBed = this.getBed(TeamType.RED);
