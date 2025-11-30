@@ -293,16 +293,16 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
 
     // Styles
     const containerStyle: React.CSSProperties = {
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
+        height: '100vh',
+        width: '100%',
+        display: 'block', // Use block instead of flex for container to ensure normal document flow
         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
         color: '#ffffff',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        padding: '20px',
-        pointerEvents: 'auto'
+        padding: '40px 20px',
+        pointerEvents: 'auto',
+        overflowY: 'auto',
+        boxSizing: 'border-box'
     };
 
     const cardStyle: React.CSSProperties = {
@@ -313,7 +313,9 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
         width: '100%',
         maxWidth: '500px',
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-        border: '1px solid rgba(255, 255, 255, 0.1)'
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        margin: '0 auto', // Center horizontally
+        // Add min-height logic indirectly via content
     };
 
     const inputStyle: React.CSSProperties = {
@@ -383,7 +385,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
 
                	<Settings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
-               	<div style={cardStyle}>
+                <div style={{ ...cardStyle, maxWidth: '700px' }}>
                     {/* Logo/Title */}
                     <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                         <h1 style={{ 
