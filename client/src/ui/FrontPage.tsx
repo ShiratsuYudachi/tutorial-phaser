@@ -437,7 +437,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
                             <li><strong>Q:</strong> Drop item</li>
                             <li><strong>TAB:</strong> Switch between your two characters</li>
                             <li style={{ color: '#ff6b6b', marginTop: '5px' }}>
-                                <strong>Cheats:</strong> Type <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 5px', borderRadius: '3px' }}>/cheat</code> in chat to enable GOD MODE (100x damage + unlimited resources)
+                                <strong>Cheats:</strong> use "T" to open chat window, type <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 5px', borderRadius: '3px' }}>/cheat</code> in chat to enable GOD MODE (100x damage + unlimited resources)
                             </li>
                         </ul>
                     </div>
