@@ -173,7 +173,7 @@ export const ITEM_DEFINITIONS: Record<ItemType, {
         droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
     },
     [ItemType.ENDER_PEARL]: { 
-        maxStack: 16, name: 'Ender Pearl', color: 0x8B00FF, icon: 'game-icons:pearl-necklace',
+        maxStack: 16, name: 'Ender Pearl', color: 0x8B00FF, icon: 'game-icons:glass-ball',
         droppedVisual: { shape: 'circle', size: 10, glowSize: 16 }
     },
     // 方块
@@ -311,7 +311,7 @@ export const GAME_CONFIG = {
     initialGold: 6,
     
     // 游戏阶段配置（4分钟总时长）
-    buildingPhaseDuration: 30000,    // 30秒建造期 (ms)
+    buildingPhaseDuration: 10000,    // 10秒建造期 (ms)
     combatPhaseDuration: 180000,     // 3分钟战斗期 (ms)
     deathmatchPhaseDuration: 30000,  // 30秒死斗期 (ms)
     totalGameDuration: 240000,       // 4分钟总时长 (ms)
