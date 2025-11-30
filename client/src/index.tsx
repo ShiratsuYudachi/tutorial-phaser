@@ -27,6 +27,23 @@ const config: Phaser.Types.Core.GameConfig = {
     scene: [GameScene],
 };
 
+// Functions to destroy and recreate game instance
+export const destroyGame = () => {
+    if (game) {
+        console.log('Destroying Phaser Game instance...');
+        game.destroy(true);
+        game = null;
+    }
+};
+
+export const createGame = () => {
+    if (!game) {
+        console.log('Creating new Phaser Game instance...');
+        game = new Phaser.Game(config);
+    }
+    return game;
+};
+
 // Main App wrapper with state management
 const MainApp: React.FC = () => {
     const [gameStarted, setGameStarted] = useState(false);
@@ -55,7 +72,7 @@ const MainApp: React.FC = () => {
                 phaserContainer.style.display = 'block';
             }
             
-            game = new Phaser.Game(config);
+            game = createGame();
         }
     }, [gameStarted]);
 

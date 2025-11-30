@@ -592,10 +592,10 @@ export class GameRoom extends Room<GameState> {
             }
             
             if (this.state.rematchCountdown <= 0) {
-                console.log('★★★ Countdown finished! Resetting game... ★★★');
+                console.log('★★★ Countdown finished! Creating new room for rematch... ★★★');
                 this.state.rematchCountdown = 0;
-                this.resetGame();
-                return; // Skip this tick after reset
+                this.createRematchRoom();
+                return; // Skip this tick after creating new room
             }
         }
         
@@ -1693,124 +1693,49 @@ export class GameRoom extends Room<GameState> {
         return allReady;
     }
 
-    resetGame() {
-        console.log('Resetting game for rematch...');
-        
-        // Reset game state
-        this.state.gamePhase = 'building';
-        this.state.gameStartTime = Date.now();
-        this.state.phaseEndTime = Date.now() + GAME_CONFIG.buildingPhaseDuration;
-        this.state.winner = '';
-        this.state.isFrozen = false;
-        this.state.rematchReady.clear();
-        this.state.rematchCountdown = 0;
-        this.state.killFeed.clear();
-        
-        // Reset team statistics
-        this.state.redKills = 0;
-        this.state.blueKills = 0;
-        this.state.redGold = 0;
-        this.state.blueGold = 0;
 
-        // Remove all entities except players
-        const playersToKeep = new Map<string, Player>();
-        this.state.entities.forEach((entity, id) => {
-            if (entity.type === EntityType.PLAYER) {
-                playersToKeep.set(id, entity as Player);
+    createRematchRoom() {
+        console.log('Creating new room for rematch...');
+        
+        // Collect all player information
+        const teamAssignments: { sessionId: string; username: string; team: string }[] = [];
+        
+        for (const client of this.clients) {
+            // Find player entity to get team and username
+            let playerTeam = '';
+            let playerUsername = '';
+            
+            this.state.entities.forEach((entity, id) => {
+                if (entity.type === EntityType.PLAYER) {
+                    const player = entity as Player;
+                    if (player.ownerSessionId === client.sessionId) {
+                        playerTeam = player.teamId;
+                        playerUsername = player.username || `Player_${client.sessionId.substring(0, 8)}`;
+                    }
+                }
+            });
+            
+            if (playerTeam) {
+                teamAssignments.push({
+                    sessionId: client.sessionId,
+                    username: playerUsername,
+                    team: playerTeam
+                });
             }
+        }
+        
+        console.log('Rematch team assignments:', teamAssignments);
+        
+        // Notify all clients to join new game room
+        this.broadcast("rematch_starting", {
+            roomId: "game_room",
+            teams: teamAssignments
         });
         
-        // Clear entities
-        this.state.entities.clear();
-        
-        // Helper to create inventory item
-        const createItem = (id: string, count: number) => {
-            const item = new InventoryItem();
-            item.itemId = id;
-            item.count = count;
-            return item;
-        };
-        
-        // Re-add players with reset stats
-        playersToKeep.forEach((player, id) => {
-            player.hp = 100;
-            player.maxHP = 100;
-            player.isDead = false;
-            player.respawnTime = 0;
-            player.kills = 0;
-            player.deaths = 0;
-            player.damageDealt = 0;
-            player.lastShootTime = 0;
-            player.lastMeleeTime = 0;
-            player.isMeleeAttacking = false;
-            player.meleeAngle = 0;
-            
-            // Set initial gold as currency (not inventory item)
-            player.gold = GAME_CONFIG.initialGold;
-            
-            // Clear inventory and give initial items (no sword - melee is built-in)
-            player.inventory.clear();
-            player.inventory.push(createItem(ItemType.ARROW, GAME_CONFIG.initialAmmo[ItemType.ARROW]));
-            player.inventory.push(createItem(ItemType.WOOD, GAME_CONFIG.initialBlocks[ItemType.WOOD]));
-            player.inventory.push(createItem(ItemType.STONE, GAME_CONFIG.initialBlocks[ItemType.STONE]));
-            player.inventory.push(createItem(ItemType.DIAMOND, GAME_CONFIG.initialBlocks[ItemType.DIAMOND]));
-            
-            // Fill remaining slots with empty items
-            while (player.inventory.length < INVENTORY_SIZE) {
-                player.inventory.push(createItem(ItemType.EMPTY, 0));
-            }
-            player.selectedSlot = 0;
-            
-            // Reset position to spawn
-            const spawnPos = player.teamId === TeamType.RED ? GAME_CONFIG.redTeamSpawn : GAME_CONFIG.blueTeamSpawn;
-            // Get character index from id (format: sessionId_1 or sessionId_2)
-            const charIndex = parseInt(id.split('_')[1]) || 1;
-            player.x = spawnPos.x + (charIndex - 1) * 50;
-            player.y = spawnPos.y;
-            
-            // Reset physics body
-            const agent = this.agents.get(id);
-            if (agent) {
-                Matter.Body.setPosition(agent.body, { x: player.x, y: player.y });
-                Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
-            }
-            
-            this.state.entities.set(id, player);
-        });
-
-        // Remove all bullets
-        this.bulletBodies.forEach((body, id) => {
-            Matter.Composite.remove(this.engine.world, body);
-        });
-        this.bulletBodies.clear();
-
-        // Remove all blocks
-        this.blockBodies.forEach((body, id) => {
-            Matter.Composite.remove(this.engine.world, body);
-        });
-        this.blockBodies.clear();
-
-        // Recreate beds (old ones were cleared with entities)
-        this.createBed(TeamType.RED, GAME_CONFIG.redBedPos.x, GAME_CONFIG.redBedPos.y);
-        this.createBed(TeamType.BLUE, GAME_CONFIG.blueBedPos.x, GAME_CONFIG.blueBedPos.y);
-        
-        // Recreate resource generators (old ones were cleared with entities)
-        // Red team base generators
-        this.createResourceGenerator('base_gold_generator', 120, 250, 'base');
-        this.createResourceGenerator('base_resource_generator', 120, 350, 'base');
-        
-        // Blue team base generators
-        this.createResourceGenerator('base_gold_generator', 680, 250, 'base');
-        this.createResourceGenerator('base_resource_generator', 680, 350, 'base');
-        
-        // Center generators
-        this.createResourceGenerator('center_gold_generator', 400, 300, 'center');
-        this.createResourceGenerator('center_resource_generator', 400, 200, 'center');
-        this.createResourceGenerator('center_resource_generator', 400, 400, 'center');
-        
-        // Update initial team gold
-        this.updateTeamGold();
-
-        console.log('Game reset complete!');
+        // Close current room after a delay to allow clients to receive the message
+        setTimeout(() => {
+            console.log('Closing current room for rematch...');
+            this.disconnect();
+        }, 1000);
     }
 }

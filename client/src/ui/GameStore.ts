@@ -3,6 +3,7 @@ import { ArraySchema } from "@colyseus/schema";
 import { GameState, Player, Entity, InventoryItem, RematchPlayer } from "../../../server/src/shared/Schema";
 import { BACKEND_URL } from "../backend";
 import { useState, useEffect } from "react";
+import { destroyGame, createGame } from "../index";
 
 type Listener = () => void;
 
@@ -249,6 +250,59 @@ class GameStore {
         this.room.onMessage("notification", (data: { text: string; color: string }) => {
             console.log("GameStore: received notification", data);
             this.addNotification(data.text, data.color);
+        });
+
+        // 8. Listen for rematch starting (new room creation)
+        this.room.onMessage("rematch_starting", async (data: { roomId: string; teams: Array<{ sessionId: string; username: string; team: string }> }) => {
+            console.log("GameStore: rematch_starting received", data);
+            
+            // Leave current room
+            if (this.room) {
+                this.room.leave();
+                this.room = undefined;
+            }
+            
+            // Reset connection promise to allow new connection
+            this.connectPromise = undefined;
+            this.isReady = false;
+            this.currentPlayerId = undefined;
+            
+            // Clear rematch state
+            this.rematchReady.clear();
+            this.rematchCountdown = 0;
+            
+            // Clear game ended state
+            this.isGameEnded = false;
+            this.gameWinner = '';
+            this.playerStats = [];
+            
+            // Clear other UI states
+            this.isShopOpen = false;
+            this.isNearBed = false;
+            this.killFeed = [];
+            this.chatMessages = [];
+            this.notifications = [];
+            
+            // Destroy Phaser Game instance (like server destroying room)
+            destroyGame();
+            
+            // Notify UI
+            this.notify();
+            
+            // Reconnect to new room
+            try {
+                const playerInfo = (window as any).playerInfo || {};
+                await this.connect({
+                    username: playerInfo.username,
+                    userId: playerInfo.userId
+                });
+                console.log("GameStore: reconnected to new room for rematch");
+                
+                // Recreate Phaser Game instance (like server creating new room)
+                createGame();
+            } catch (e) {
+                console.error("GameStore: failed to reconnect for rematch", e);
+            }
         });
     }
 

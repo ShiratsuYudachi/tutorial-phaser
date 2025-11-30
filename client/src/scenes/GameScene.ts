@@ -784,13 +784,6 @@ export class GameScene extends Phaser.Scene {
             this.showEndGame();
         }
         
-        // Check for game restart (from ended to building)
-        if (this.lastGamePhase === 'ended' && this.room.state.gamePhase === 'building') {
-            console.log('Game restarted! Hiding end game screen.');
-            gameStore.setGameEnded(false);
-            gameStore.clearKillFeed();
-        }
-        
         this.lastGamePhase = this.room.state.gamePhase;
 
         this.elapsedTime += delta;
