@@ -292,7 +292,7 @@ export const GAME_CONFIG = {
 
     // 战斗系统配置
     playerMaxHP: 100,
-    bedMaxHP: 50,
+    bedMaxHP: 150,
     bulletDamage: 20,
     respawnTime: 3000, // 3秒重生时间 (ms)
 
