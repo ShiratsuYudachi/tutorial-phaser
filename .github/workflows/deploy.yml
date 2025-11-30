@@ -21,11 +21,17 @@ jobs:
           node-version: 18
 
       - name: Install and Build
-        working-directory: ./client
         run: |
-          # Remove package-lock.json to force npm to resolve Linux-specific dependencies (fixing @parcel/watcher error)
+          # Remove package-lock.json to force npm to resolve Linux-specific dependencies
           rm -f package-lock.json
+          rm -f client/package-lock.json
+          rm -f server/package-lock.json
+          
+          # Install all dependencies (root, client, server via postinstall script in root package.json)
           npm install
+          
+          # Build client
+          cd client
           # Use --public-url ./ to ensure relative paths work on GitHub Pages subdirectories
           npm run build -- --public-url ./
 
