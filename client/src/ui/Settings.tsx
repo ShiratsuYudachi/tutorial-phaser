@@ -13,7 +13,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
 	useEffect(() => {
 		if (isOpen) {
-			const savedUrl = localStorage.getItem('backend_url') || '';
+			const savedUrl = localStorage.getItem('backend_url') || 'ws://47.79.92.12:2567';
 			setBackendUrlState(savedUrl);
 		}
 	}, [isOpen]);
