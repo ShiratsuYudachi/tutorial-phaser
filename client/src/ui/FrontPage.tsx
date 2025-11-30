@@ -417,7 +417,7 @@ export const FrontPage: React.FC<FrontPageProps> = ({ onGameStart }) => {
                             lineHeight: '1.8',
                             color: 'rgba(255,255,255,0.9)'
                         }}>
-                            <li><strong>Objective:</strong> Destroy the enemy team's bed and eliminate all opponents!</li>
+                            <li><strong>Objective:</strong> Destroy the enemy team's bed(i.e. respawn point, a red/blue block, destroy it will prevent enemies from respawning) and eliminate all remaining opponents!</li>
                             <li><strong>Building Phase:</strong> Collect resources and build defenses around your bed</li>
                             <li><strong>Combat Phase:</strong> Attack the enemy base while protecting your own</li>
                             <li><strong>Deathmatch:</strong> All beds destroyed - last team standing wins!</li>
