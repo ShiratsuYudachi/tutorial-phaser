@@ -153,63 +153,63 @@ export const ITEM_DEFINITIONS: Record<ItemType, {
 }> = {
     [ItemType.EMPTY]: { 
         maxStack: 0, name: 'Empty', color: 0x000000, icon: '',
-        droppedVisual: { shape: 'circle', size: 12, glowSize: 18 }
+        droppedVisual: { shape: 'circle', size: 7, glowSize: 11 }
     },
     [ItemType.GOLD_INGOT]: { 
         maxStack: 64, name: 'Gold Ingot', color: 0xFFD700, icon: 'game-icons:gold-bar',
-        droppedVisual: { shape: 'hexagon', size: 14, glowSize: 20 }
+        droppedVisual: { shape: 'hexagon', size: 9, glowSize: 12 }
     },
     // 近战武器
     [ItemType.SWORD]: { 
         maxStack: 1, name: 'Sword', color: 0xC0C0C0, icon: 'game-icons:broadsword',
-        droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
+        droppedVisual: { shape: 'diamond', size: 10, glowSize: 14 }
     },
     // 弹药
     [ItemType.ARROW]: { 
         maxStack: 64, name: 'Arrow', color: 0x8B4513, icon: 'game-icons:arrow-cluster',
-        droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
+        droppedVisual: { shape: 'diamond', size: 7, glowSize: 11 }
     },
     [ItemType.FIREBALL_AMMO]: { 
         maxStack: 32, name: 'Fireball', color: 0xff4500, icon: 'game-icons:fireball',
-        droppedVisual: { shape: 'circle', size: 14, glowSize: 24 }
+        droppedVisual: { shape: 'circle', size: 9, glowSize: 15 }
     },
     [ItemType.DART_AMMO]: { 
         maxStack: 64, name: 'Dart', color: 0x00ffff, icon: 'game-icons:thrown-daggers',
-        droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
+        droppedVisual: { shape: 'diamond', size: 7, glowSize: 11 }
     },
     [ItemType.ENDER_PEARL]: { 
         maxStack: 16, name: 'Ender Pearl', color: 0x8B00FF, icon: 'game-icons:glass-ball',
-        droppedVisual: { shape: 'circle', size: 10, glowSize: 16 }
+        droppedVisual: { shape: 'circle', size: 6, glowSize: 10 }
     },
     // 方块
     [ItemType.WOOD]: { 
         maxStack: 64, name: 'Wood', color: 0x8B4513, icon: 'game-icons:wood-pile',
-        droppedVisual: { shape: 'square', size: 14, glowSize: 20 }
+        droppedVisual: { shape: 'square', size: 9, glowSize: 12 }
     },
     [ItemType.STONE]: { 
         maxStack: 64, name: 'Stone', color: 0x808080, icon: 'game-icons:stone-block',
-        droppedVisual: { shape: 'square', size: 14, glowSize: 20 }
+        droppedVisual: { shape: 'square', size: 9, glowSize: 12 }
     },
     [ItemType.DIAMOND]: { 
         maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:cut-diamond',
-        droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
+        droppedVisual: { shape: 'diamond', size: 10, glowSize: 14 }
     },
     [ItemType.TNT]: { 
         maxStack: 16, name: 'TNT', color: 0xFF0000, icon: 'game-icons:dynamite',
-        droppedVisual: { shape: 'square', size: 16, glowSize: 22 }
+        droppedVisual: { shape: 'square', size: 10, glowSize: 14 }
     },
     // 旧武器类型（保留用于兼容，实际显示为弹药）
     [ItemType.BOW]: { 
         maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow',
-        droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
+        droppedVisual: { shape: 'diamond', size: 10, glowSize: 14 }
     },
     [ItemType.FIREBALL]: { 
         maxStack: 1, name: 'Fireball Staff', color: 0xff4500, icon: 'game-icons:fireball',
-        droppedVisual: { shape: 'circle', size: 14, glowSize: 24 }
+        droppedVisual: { shape: 'circle', size: 9, glowSize: 15 }
     },
     [ItemType.DART]: { 
         maxStack: 1, name: 'Dart Thrower', color: 0x00ffff, icon: 'game-icons:thrown-daggers',
-        droppedVisual: { shape: 'diamond', size: 12, glowSize: 18 }
+        droppedVisual: { shape: 'diamond', size: 7, glowSize: 11 }
     }
 };
 
