@@ -23,7 +23,7 @@ export class GameRoom extends Room<GameState> {
     // TNT Explosions tracking
     // { blockId: { explodeTime: number, sourceId: string } }
     tntExplosions = new Map<string, { explodeTime: number, sourceId: string }>();
-
+    
     // 队伍分配
     teamAssignments: string[] = []; // 按加入顺序: [红队sessionId, 蓝队sessionId]
 
@@ -773,7 +773,7 @@ export class GameRoom extends Room<GameState> {
             }
         }
     }
-
+    
     placeBlock(playerId: string, x: number, y: number, blockType: BlockItem) {
         const player = this.state.entities.get(playerId) as Player;
         if (!player) return;
@@ -853,6 +853,10 @@ export class GameRoom extends Room<GameState> {
         
         // 消耗方块
         item.count = count - 1;
+        if (item.count <= 0) {
+            item.itemId = ItemType.EMPTY;
+            item.count = 0;
+        }
         
         console.log(`Placed ${blockType} block at ${gridX}, ${gridY}. Remaining: ${item.count}`);
     }
@@ -1834,7 +1838,7 @@ export class GameRoom extends Room<GameState> {
                     const angle = Math.atan2(dy, dx);
                     const knockbackForce = GAME_CONFIG.tntKnockback * damageFactor;
                     
-                    const agent = this.agents.get(id);
+            const agent = this.agents.get(id);
                     if (agent && agent.body) {
                         Matter.Body.setVelocity(agent.body, {
                             x: Math.cos(angle) * knockbackForce,
