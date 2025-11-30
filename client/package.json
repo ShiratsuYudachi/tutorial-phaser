@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Colyseus + Phaser: Client-side",
   "scripts": {
-    "start": "rm -rf .parcel-cache && parcel serve index.html",
+    "start": "rm -rf .parcel-cache && parcel serve index.html -p 8000",
     "build": "parcel build index.html",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
