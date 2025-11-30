@@ -1,0 +1,34 @@
+name: Deploy Client to GitHub Pages
+
+on:
+  push:
+    branches: [ master, main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    concurrency: ci-${{ github.ref }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install and Build
+        working-directory: ./client
+        run: |
+          npm install
+          # Use --public-url ./ to ensure relative paths work on GitHub Pages subdirectories
+          npm run build -- --public-url ./
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: client/dist
+
