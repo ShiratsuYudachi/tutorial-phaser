@@ -32,8 +32,8 @@ export class GameScene extends Phaser.Scene {
     // Drop Item Key (Q)
     qKey: Phaser.Input.Keyboard.Key;
     
-    // Melee Attack Key (E)
-    eKey: Phaser.Input.Keyboard.Key;
+    // Melee Attack Key (Space)
+    spaceKey: Phaser.Input.Keyboard.Key;
     
     // Switch Character Key (Tab)
     tabKey: Phaser.Input.Keyboard.Key;
@@ -224,8 +224,8 @@ export class GameScene extends Phaser.Scene {
         // Drop item key (Q)
         this.qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
 
-        // Melee attack key (E)
-        this.eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+        // Melee attack key (Space)
+        this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
         // Switch Character Key (Tab)
         this.tabKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
@@ -960,7 +960,7 @@ export class GameScene extends Phaser.Scene {
         // Action Inputs
         const worldPoint = this.cameras.main.getWorldPoint(this.mousePointer.x, this.mousePointer.y);
         this.inputPayload.isDown = this.mousePointer.leftButtonDown();  // 左键 - 远程攻击/放置方块
-        this.inputPayload.isRightDown = this.eKey.isDown;  // E键 - 近战攻击
+        this.inputPayload.isRightDown = this.spaceKey.isDown;  // 空格键 - 近战攻击
         this.inputPayload.mouseX = worldPoint.x;
         this.inputPayload.mouseY = worldPoint.y;
         
