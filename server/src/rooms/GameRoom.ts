@@ -1,7 +1,7 @@
 import { Room, Client } from "colyseus";
 import Matter from "matter-js";
 import { GameState, Player, Bullet, InputData, Entity, Bed, Block, InventoryItem, DroppedItem, ResourceGenerator, RematchPlayer } from "../shared/Schema";
-import { GAME_CONFIG, WALLS, COLLISION_CATEGORIES, WEAPON_CONFIG, MELEE_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, isAmmo, isMelee, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
+import { GAME_CONFIG, COLLISION_CATEGORIES, WEAPON_CONFIG, MELEE_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, EntityType, TeamType, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, isAmmo, isMelee, SHOP_TRADES, ITEM_DEFINITIONS, DROPPED_ITEM_CONFIG, RESOURCE_GENERATOR_CONFIG, GENERATOR_LOOT_TABLES } from "../shared/Constants";
 import { Agent } from "../entities/Agent";
 import { PlayerAgent } from "../entities/PlayerAgent";
 import { AuthService } from "../services/AuthService";
@@ -39,19 +39,26 @@ export class GameRoom extends Room<GameState> {
         this.engine = Matter.Engine.create();
         this.engine.gravity.y = 0; // Top-down, no gravity
 
-        // 2. Create Walls
-        WALLS.forEach(wall => {
-            const centerX = wall.x + wall.width / 2;
-            const centerY = wall.y + wall.height / 2;
-
-            const body = Matter.Bodies.rectangle(centerX, centerY, wall.width, wall.height, {
-                isStatic: true,
-                label: 'wall',
-                collisionFilter: {
-                    category: COLLISION_CATEGORIES.WALL
-                }
-            });
-            Matter.Composite.add(this.engine.world, body);
+        // 2. Create Diamond Blocks (replacing walls)
+        // Original wall positions converted to diamond blocks
+        const wallAreas = [
+            // 左侧障碍物
+            { x: 200, y: 150, width: 50, height: 150 },
+            { x: 200, y: 400, width: 50, height: 150 },
+            // 右侧障碍物（对称）
+            { x: 550, y: 150, width: 50, height: 150 },
+            { x: 550, y: 400, width: 50, height: 150 },
+            // 中央障碍物
+            { x: 375, y: 275, width: 50, height: 50 },
+            // 四周的墙壁
+            { x: 400, y: -25, width: 800, height: 50 }, // 上
+            { x: 400, y: 625, width: 800, height: 50 }, // 下
+            { x: -25, y: 300, width: 50, height: 600 }, // 左
+            { x: 825, y: 300, width: 50, height: 600 }, // 右
+        ];
+        
+        wallAreas.forEach(area => {
+            this.createDiamondBlocksInArea(area.x, area.y, area.width, area.height);
         });
         
         // 3. Create Beds
@@ -677,7 +684,7 @@ export class GameRoom extends Room<GameState> {
             frictionAir: 0,
             collisionFilter: {
                 category: COLLISION_CATEGORIES.BULLET,
-                mask: COLLISION_CATEGORIES.WALL | COLLISION_CATEGORIES.PLAYER | COLLISION_CATEGORIES.BED | COLLISION_CATEGORIES.BLOCK
+                mask: COLLISION_CATEGORIES.PLAYER | COLLISION_CATEGORIES.BED | COLLISION_CATEGORIES.BLOCK
             }
         });
 
@@ -695,6 +702,53 @@ export class GameRoom extends Room<GameState> {
         this.state.entities.delete(bulletId);
     }
     
+    // Helper function to create diamond blocks in an area (replacing walls)
+    createDiamondBlocksInArea(areaX: number, areaY: number, areaWidth: number, areaHeight: number) {
+        const gridSize = GAME_CONFIG.gridSize;
+        const blockType = ItemType.DIAMOND;
+        
+        // Calculate grid positions
+        const startX = Math.floor(areaX / gridSize) * gridSize;
+        const startY = Math.floor(areaY / gridSize) * gridSize;
+        const endX = Math.ceil((areaX + areaWidth) / gridSize) * gridSize;
+        const endY = Math.ceil((areaY + areaHeight) / gridSize) * gridSize;
+        
+        // Create blocks in grid pattern
+        for (let x = startX; x < endX; x += gridSize) {
+            for (let y = startY; y < endY; y += gridSize) {
+                const gridX = x;
+                const gridY = y;
+                
+                // Create block entity
+                const blockId = Math.random().toString(36).substr(2, 9);
+                const block = new Block();
+                block.type = EntityType.BLOCK;
+                block.x = gridX;
+                block.y = gridY;
+                block.blockType = blockType;
+                
+                const blockConfig = BLOCK_CONFIG[blockType];
+                block.hp = blockConfig.maxHP;
+                block.maxHP = blockConfig.maxHP;
+                
+                this.state.entities.set(blockId, block);
+                
+                // Create physics body
+                const body = Matter.Bodies.rectangle(gridX, gridY, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, {
+                    isStatic: true,
+                    label: `block_${blockId}`,
+                    collisionFilter: {
+                        category: COLLISION_CATEGORIES.BLOCK,
+                        mask: COLLISION_CATEGORIES.PLAYER | COLLISION_CATEGORIES.BULLET
+                    }
+                });
+                
+                Matter.Composite.add(this.engine.world, body);
+                this.blockBodies.set(blockId, body);
+            }
+        }
+    }
+
     placeBlock(playerId: string, x: number, y: number, blockType: BlockItem) {
         const player = this.state.entities.get(playerId) as Player;
         if (!player) return;

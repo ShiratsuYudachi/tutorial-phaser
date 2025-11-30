@@ -26,7 +26,7 @@ export class PlayerAgent extends Agent<Player> {
             frictionAir: 0.1,
             collisionFilter: {
                 category: COLLISION_CATEGORIES.PLAYER,
-                mask: COLLISION_CATEGORIES.WALL | COLLISION_CATEGORIES.BULLET | COLLISION_CATEGORIES.PLAYER | COLLISION_CATEGORIES.BLOCK
+                mask: COLLISION_CATEGORIES.BULLET | COLLISION_CATEGORIES.PLAYER | COLLISION_CATEGORIES.BLOCK
             }
         });
         Matter.Composite.add(this.world, this.body);

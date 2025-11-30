@@ -4,7 +4,7 @@ import { BACKEND_URL } from "../backend";
 
 import type { GameState } from "../../../server/src/shared/Schema";
 import { Player, Bullet, Block, Bed, Entity, DroppedItem, ResourceGenerator } from "../../../server/src/shared/Schema";
-import { GAME_CONFIG, WALLS, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_INTERACTION_RANGE, RESOURCE_GENERATOR_CONFIG } from "../../../server/src/shared/Constants";
+import { GAME_CONFIG, WEAPON_CONFIG, BLOCK_CONFIG, INVENTORY_SIZE, ITEM_DEFINITIONS, ItemType, WeaponItem, BlockItem, isWeapon, isBlock, SHOP_INTERACTION_RANGE, RESOURCE_GENERATOR_CONFIG } from "../../../server/src/shared/Constants";
 import { InputData } from "../../../server/src/shared/Schema";
 
 import { gameStore } from "../ui/GameStore";
@@ -319,10 +319,6 @@ export class GameScene extends Phaser.Scene {
     createMap() {
         this.add.rectangle(GAME_CONFIG.mapWidth / 2, GAME_CONFIG.mapHeight / 2,
             GAME_CONFIG.mapWidth, GAME_CONFIG.mapHeight).setStrokeStyle(4, 0xffffff);
-
-        const graphics = this.add.graphics();
-        graphics.fillStyle(0x888888, 1);
-        WALLS.forEach(wall => graphics.fillRect(wall.x, wall.y, wall.width, wall.height));
     }
 
     async connect() {
