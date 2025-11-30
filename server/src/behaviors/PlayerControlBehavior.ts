@@ -6,7 +6,7 @@ import { WEAPON_CONFIG, MELEE_CONFIG, ITEM_DEFINITIONS, ItemType, WeaponItem, Bl
 export class PlayerControlBehavior extends Behavior<Player> {
     update(deltaTime: number) {
         const player = this.agent.schema;
-        if (!player || !player.isActive) return;
+        if (!player) return;
 
         let input: InputData;
         while (input = player.inputQueue.shift()) {

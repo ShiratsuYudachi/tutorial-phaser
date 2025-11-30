@@ -1,7 +1,8 @@
 import { Agent } from "./Agent";
-import { Player } from "../shared/Schema";
+import { Player, GameState } from "../shared/Schema";
 import { PlayerControlBehavior } from "../behaviors/PlayerControlBehavior";
 import { SyncTransformBehavior } from "../behaviors/SyncTransformBehavior";
+import { AIControlBehavior } from "../behaviors/AIControlBehavior";
 import Matter from "matter-js";
 import { GAME_CONFIG, COLLISION_CATEGORIES, WeaponItem, BlockItem } from "../shared/Constants";
 
@@ -11,7 +12,8 @@ export class PlayerAgent extends Agent<Player> {
     constructor(
         sessionId: string, 
         world: Matter.World, 
-        schema: Player, 
+        schema: Player,
+        getGameState: () => GameState,
         onShoot: (ownerId: string, pos: { x: number, y: number }, aimAngle: number, weaponType: WeaponItem) => void,
         onPlaceBlock: (playerId: string, x: number, y: number, blockType: BlockItem) => void,
         onDropItem: (playerId: string, slotIndex: number, mouseX: number, mouseY: number) => void,
@@ -38,6 +40,7 @@ export class PlayerAgent extends Agent<Player> {
         controlBehavior.onDropItem = (playerId, slotIndex, mouseX, mouseY) => onDropItem(this.sessionId, slotIndex, mouseX, mouseY);
         controlBehavior.onMeleeAttack = (playerId, position, angle) => onMeleeAttack(this.sessionId, position, angle);
 
+        this.addBehavior(new AIControlBehavior(this, getGameState));
         this.addBehavior(controlBehavior);
         this.addBehavior(new SyncTransformBehavior(this));
     }

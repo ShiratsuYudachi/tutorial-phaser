@@ -1135,7 +1135,8 @@ export class GameRoom extends Room<GameState> {
         const agent = new PlayerAgent(
             characterId, 
             this.engine.world, 
-            player, 
+            player,
+            () => this.state, 
             (ownerId, pos, aimAngle, weaponType) => {
                 this.spawnBullet(ownerId, pos, aimAngle, weaponType);
             },
