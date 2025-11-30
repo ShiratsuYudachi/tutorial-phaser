@@ -195,7 +195,7 @@ const EndGameScreen: React.FC = () => {
                                 textAlign: 'center',
                                 marginBottom: '8px'
                             }}>
-                                {medal} {player.username.substring(0, 12)} - {player.kills}K
+                                {medal} {player.username.substring(0, 12)} - {player.kills} Kills
                             </div>
                         );
                     })}
