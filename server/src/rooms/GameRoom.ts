@@ -578,6 +578,7 @@ export class GameRoom extends Room<GameState> {
         
         if (player.hp <= 0 && !player.isDead) {
             player.isDead = true;
+            player.isActive = false; // Mark as inactive on death
             player.deaths++; // 追踪死亡
             console.log(`Player ${sessionId} (${player.teamId}) died!`);
             
@@ -585,6 +586,22 @@ export class GameRoom extends Room<GameState> {
             if (agent && agent.body) {
                 Matter.Body.setPosition(agent.body, { x: -1000, y: -1000 });
                 Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
+            }
+            
+            // Auto-switch control to another alive character if available
+            if (player.ownerSessionId) {
+                let switched = false;
+                for (const [id, entity] of this.state.entities) {
+                    if (entity.type === EntityType.PLAYER && id !== sessionId) {
+                        const other = entity as Player;
+                        if (other.ownerSessionId === player.ownerSessionId && !other.isDead) {
+                            other.isActive = true;
+                            switched = true;
+                            console.log(`Auto-switched active character for ${player.ownerSessionId} to ${id}`);
+                            break;
+                        }
+                    }
+                }
             }
             
             this.startRespawn(sessionId);

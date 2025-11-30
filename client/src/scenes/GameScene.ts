@@ -973,6 +973,38 @@ export class GameScene extends Phaser.Scene {
         // Check if player is near their team's bed
         this.checkNearBed();
         
+        // Check if current player is dead and switch if needed
+        const currentPlayer = this.room.state.entities.get(this.currentPlayerId) as Player;
+        if (currentPlayer && currentPlayer.isDead) {
+            // Find another character owned by me that is alive
+            let foundAlive = false;
+            this.room.state.entities.forEach((entity, id) => {
+                if (entity.type === 'player' && id !== this.currentPlayerId) {
+                    const p = entity as Player;
+                    if (p.ownerSessionId === this.room.sessionId && !p.isDead) {
+                        // Found an alive character! Switch camera immediately
+                        console.log(`Current player dead, switching camera to ${id}`);
+                        this.currentPlayerId = id;
+                        
+                        // Update camera follow
+                        const visual = this.entityVisuals.get(id);
+                        if (visual) {
+                            this.cameras.main.startFollow(visual as Phaser.GameObjects.Container, false, 0.1, 0.1);
+                            
+                            // Update highlights
+                            this.entityVisuals.forEach((v) => {
+                                const highlight = v.getData('highlight');
+                                if (highlight) highlight.setVisible(false);
+                            });
+                            const newHighlight = visual.getData('highlight');
+                            if (newHighlight) newHighlight.setVisible(true);
+                        }
+                        foundAlive = true;
+                    }
+                }
+            });
+        }
+        
         // Rotate player visual (disabled when game ended)
         if (!this.room.state.isFrozen) {
             const playerVisual = this.entityVisuals.get(this.currentPlayerId);
