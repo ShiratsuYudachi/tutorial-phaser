@@ -23,6 +23,8 @@ jobs:
       - name: Install and Build
         working-directory: ./client
         run: |
+          # Remove package-lock.json to force npm to resolve Linux-specific dependencies (fixing @parcel/watcher error)
+          rm -f package-lock.json
           npm install
           # Use --public-url ./ to ensure relative paths work on GitHub Pages subdirectories
           npm run build -- --public-url ./
