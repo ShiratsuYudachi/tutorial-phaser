@@ -292,9 +292,13 @@ class GameStore {
             // Reconnect to new room
             try {
                 const playerInfo = (window as any).playerInfo || {};
+                // Use the specific rematchId to ensure we join the correct room instance
+                // Requires server config: gameServer.define('game_room', GameRoom).filterBy(['rematchId']);
                 await this.connect({
                     username: playerInfo.username,
-                    userId: playerInfo.userId
+                    userId: playerInfo.userId,
+                    // @ts-ignore - dynamic option
+                    rematchId: data.rematchId 
                 });
                 console.log("GameStore: reconnected to new room for rematch");
                 

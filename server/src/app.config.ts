@@ -26,7 +26,7 @@ export default config({
         /**
          * Define your room handlers:
          */
-        gameServer.define('game_room', GameRoom);
+        gameServer.define('game_room', GameRoom).filterBy(['rematchId']);
         gameServer.define('lobby_room', LobbyRoom);
 
         //

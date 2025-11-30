@@ -27,7 +27,14 @@ export class GameRoom extends Room<GameState> {
     // 队伍分配
     teamAssignments: string[] = []; // 按加入顺序: [红队sessionId, 蓝队sessionId]
 
-    onCreate(options: { username?: string }) {
+    onCreate(options: { username?: string; rematchId?: string }) {
+        // If this is a rematch room, ensure we handle the rematchId option correctly
+        if (options.rematchId) {
+            console.log(`Creating/Joining Rematch Room with ID: ${options.rematchId}`);
+            // Set room metadata if needed, though filterBy handles the matching
+            this.setMetadata({ rematchId: options.rematchId });
+        }
+
         this.setState(new GameState());
         this.state.mapWidth = GAME_CONFIG.mapWidth;
         this.state.mapHeight = GAME_CONFIG.mapHeight;
@@ -1990,8 +1997,12 @@ export class GameRoom extends Room<GameState> {
         console.log('Rematch team assignments:', teamAssignments);
         
         // Notify all clients to join new game room
+        // Generate a unique rematch ID to ensure all players join the same new room instance
+        const rematchId = Math.random().toString(36).substring(2, 15);
+        
         this.broadcast("rematch_starting", {
             roomId: "game_room",
+            rematchId: rematchId,
             teams: teamAssignments
         });
         

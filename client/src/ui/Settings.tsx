@@ -143,6 +143,27 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 							}}>
 								Backend Server URL (WebSocket)
 							</label>
+							<select
+								onChange={(e) => setBackendUrlState(e.target.value)}
+								value={backendUrl}
+								style={{
+									width: '100%',
+									padding: '12px',
+									marginBottom: '10px',
+									background: 'rgba(255, 255, 255, 0.1)',
+									border: '1px solid rgba(255, 255, 255, 0.2)',
+									borderRadius: '6px',
+									color: '#ffffff',
+									fontSize: '14px',
+									fontFamily: 'monospace',
+									boxSizing: 'border-box',
+									cursor: 'pointer'
+								}}
+							>
+								<option value="" style={{ color: '#000' }}>Select a preset...</option>
+								<option value="ws://47.79.92.12:2567" style={{ color: '#000' }}>Production (ws://47.79.92.12:2567)</option>
+								<option value="ws://localhost:2567" style={{ color: '#000' }}>Localhost (ws://localhost:2567)</option>
+							</select>
 							<input
 								type="text"
 								value={backendUrl}
