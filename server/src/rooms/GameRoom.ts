@@ -20,6 +20,10 @@ export class GameRoom extends Room<GameState> {
     // Notification cooldown tracking (sessionId -> lastNotificationTime)
     lastInventoryFullNotification = new Map<string, number>();
     
+    // TNT Explosions tracking
+    // { blockId: { explodeTime: number, sourceId: string } }
+    tntExplosions = new Map<string, { explodeTime: number, sourceId: string }>();
+
     // 队伍分配
     teamAssignments: string[] = []; // 按加入顺序: [红队sessionId, 蓝队sessionId]
 
@@ -400,6 +404,7 @@ export class GameRoom extends Room<GameState> {
             // Run slower updates (every frame, not every fixed step)
             this.checkItemPickup();
             this.updateResourceGenerators();
+            this.checkTNTExplosions();
             
             // Cleanup old items every 60 seconds
             if (Math.random() < 0.001) { // ~1% chance per frame = ~60 times/min at 60fps
@@ -836,6 +841,15 @@ export class GameRoom extends Room<GameState> {
         
         Matter.Composite.add(this.engine.world, body);
         this.blockBodies.set(blockId, body);
+        
+        // --- TNT Logic ---
+        if (blockType === ItemType.TNT) {
+            this.tntExplosions.set(blockId, {
+                explodeTime: Date.now() + GAME_CONFIG.tntFuseTime,
+                sourceId: playerId
+            });
+            console.log(`TNT placed by ${playerId}, exploding in ${GAME_CONFIG.tntFuseTime}ms`);
+        }
         
         // 消耗方块
         item.count = count - 1;
@@ -1767,6 +1781,137 @@ export class GameRoom extends Room<GameState> {
         return allReady;
     }
 
+
+    checkTNTExplosions() {
+        const now = Date.now();
+        const explodedIds: string[] = [];
+        
+        for (const [blockId, data] of this.tntExplosions.entries()) {
+            if (now >= data.explodeTime) {
+                const block = this.state.entities.get(blockId) as Block;
+                if (block) {
+                    this.createExplosion(block.x, block.y, GAME_CONFIG.tntExplosionRadius, GAME_CONFIG.tntDamage, data.sourceId);
+                    
+                    // Destroy the TNT block itself
+                    this.removeBlock(blockId);
+                    explodedIds.push(blockId);
+                } else {
+                    // Block already destroyed (maybe by another explosion)
+                    explodedIds.push(blockId);
+                }
+            }
+        }
+        
+        // Cleanup triggered explosions
+        explodedIds.forEach(id => this.tntExplosions.delete(id));
+    }
+    
+    createExplosion(x: number, y: number, radius: number, damage: number, sourceId: string) {
+        console.log(`Explosion at ${x}, ${y} radius ${radius}`);
+        
+        // Broadcast explosion effect to clients (using a special message or just rely on state changes)
+        // For visuals, we can send a message
+        this.broadcast("explosion", { x, y, radius });
+        
+        // Find entities in range
+        // 1. Players
+        this.state.entities.forEach((entity, id) => {
+            if (entity instanceof Player && !entity.isDead) {
+                const dx = entity.x - x;
+                const dy = entity.y - y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance <= radius) {
+                    // Damage falloff? Let's keep it simple first: full damage
+                    // Or linear falloff: damage * (1 - distance/radius)
+                    const damageFactor = 1 - (distance / radius) * 0.5; // Min 50% damage at edge
+                    const actualDamage = Math.floor(damage * damageFactor);
+                    
+                    entity.hp -= actualDamage;
+                    console.log(`Player ${id} hit by explosion: -${actualDamage} HP`);
+                    
+                    // Knockback
+                    const angle = Math.atan2(dy, dx);
+                    const knockbackForce = GAME_CONFIG.tntKnockback * damageFactor;
+                    
+                    const agent = this.agents.get(id);
+                    if (agent && agent.body) {
+                        Matter.Body.setVelocity(agent.body, {
+                            x: Math.cos(angle) * knockbackForce,
+                            y: Math.sin(angle) * knockbackForce
+                        });
+                    }
+                    
+                    // Track damage/kills
+                    const sourcePlayer = this.state.entities.get(sourceId) as Player;
+                    if (sourcePlayer && sourceId !== id) {
+                        sourcePlayer.damageDealt += actualDamage;
+                    }
+                    
+                    // Check death
+                    if (this.checkPlayerDeath(id) && sourcePlayer && sourceId !== id) {
+                        sourcePlayer.kills++;
+                        this.addKillFeed(sourceId, id);
+                    }
+                }
+            } else if (entity instanceof Block && entity.hp > 0) {
+                 // 2. Blocks (Destroy destructible blocks)
+                 const dx = entity.x - x;
+                 const dy = entity.y - y;
+                 const distance = Math.sqrt(dx * dx + dy * dy);
+                 
+                 if (distance <= radius) {
+                     // Deal massive damage to blocks to destroy them
+                     entity.hp -= 1000;
+                     if (entity.hp <= 0) {
+                         // If it's a TNT block that hasn't exploded yet, trigger it immediately (chain reaction)
+                         // But with a small delay to look cool? Or instant?
+                         // For now, just destroy it. If we want chain reaction, we'd need to check type
+                         if ((entity as Block).blockType === ItemType.TNT) {
+                             // Chain reaction!
+                             // We can either trigger it now or let the loop handle it
+                             // If we destroy it here, removeBlock calls state.delete, so the loop won't find it
+                             // So we should manually trigger explosion for it?
+                             // Simpler: Just let it be destroyed for now. 
+                             // To implement chain reaction: 
+                             // Check if it's in tntExplosions map, if so, set its time to NOW.
+                             const tntData = this.tntExplosions.get(id);
+                             if (tntData) {
+                                 tntData.explodeTime = Date.now(); // Explode next tick
+                                 // Don't destroy it yet, let the loop handle it
+                                 entity.hp = 1; // Keep it alive for one tick
+                                 return; 
+                             }
+                         }
+                         
+                         this.removeBlock(id);
+                     }
+                 }
+            } else if (entity instanceof Bed) {
+                // 3. Beds (Optional: can TNT destroy beds?)
+                // Let's say yes for now
+                const dx = entity.x - x;
+                const dy = entity.y - y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance <= radius) {
+                    entity.hp -= damage;
+                    console.log(`Bed ${entity.teamId} hit by explosion: -${damage} HP`);
+                    
+                    if (entity.hp <= 0) {
+                        // Handle bed destruction
+                         const bedId = `bed_${entity.teamId}`;
+                         const bedBody = this.bedBodies.get(bedId);
+                        if (bedBody) {
+                            Matter.Composite.remove(this.engine.world, bedBody);
+                            this.bedBodies.delete(bedId);
+                        }
+                        console.log(`Bed ${entity.teamId} DESTROYED by TNT!`);
+                    }
+                }
+            }
+        });
+    }
 
     createRematchRoom() {
         console.log('Creating new room for rematch...');

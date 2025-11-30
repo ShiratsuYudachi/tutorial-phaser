@@ -83,6 +83,8 @@ export class GameScene extends Phaser.Scene {
     
     // 近战攻击相关
     meleeSound: Phaser.Sound.BaseSound;
+    tntFuseSound: Phaser.Sound.BaseSound;
+    explosionSound: Phaser.Sound.BaseSound;
     meleeSwingGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
 
     constructor() { super({ key: "game" }); }
@@ -120,6 +122,18 @@ export class GameScene extends Phaser.Scene {
         const meleeBuffer = this.generateMeleeSound();
         if (meleeBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.cache.audio.add('melee', meleeBuffer);
+        }
+        
+        // 生成 TNT 引信音效
+        const fuseBuffer = this.generateFuseSound();
+        if (fuseBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
+            this.cache.audio.add('tnt_fuse', fuseBuffer);
+        }
+        
+        // 生成爆炸音效
+        const explosionBuffer = this.generateExplosionSound();
+        if (explosionBuffer && this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
+            this.cache.audio.add('explosion', explosionBuffer);
         }
     }
     
@@ -190,6 +204,55 @@ export class GameScene extends Phaser.Scene {
             const t = i / sampleRate;
             const envelope = Math.exp(-t * 40);
             data[i] = Math.sin(2 * Math.PI * frequency * t) * envelope * 0.2;
+        }
+        
+        return buffer;
+    }
+
+    generateFuseSound(): AudioBuffer | null {
+        if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) return null;
+        
+        const audioContext = this.sound.context;
+        const sampleRate = audioContext.sampleRate;
+        const duration = 3.0; // 3秒引信
+        const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            // 嘶嘶声 = 白噪声
+            const noise = (Math.random() * 2 - 1);
+            // 声音逐渐变大
+            const envelope = 0.1 + (t / duration) * 0.4;
+            // 稍微加点高频滤波器效果（简单模拟）
+            const hiss = noise * Math.sin(t * 500); 
+            
+            data[i] = hiss * envelope * 0.3;
+        }
+        
+        return buffer;
+    }
+
+    generateExplosionSound(): AudioBuffer | null {
+        if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) return null;
+        
+        const audioContext = this.sound.context;
+        const sampleRate = audioContext.sampleRate;
+        const duration = 0.8;
+        const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            // 爆炸 = 低频噪音 + 指数衰减
+            const noise = (Math.random() * 2 - 1);
+            const envelope = Math.exp(-t * 6);
+            
+            // 低通滤波模拟（简单平均）
+            // 这里只是简单的噪音混合
+            const lowFreq = Math.sin(2 * Math.PI * 50 * t) * 0.5; // 添加一些低频震动
+            
+            data[i] = (noise * 0.8 + lowFreq * 0.4) * envelope * 0.8;
         }
         
         return buffer;
@@ -300,6 +363,12 @@ export class GameScene extends Phaser.Scene {
         if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
             this.meleeSound = this.sound.add('melee', { volume: 0.5, rate: 1 });
         }
+        
+        // 创建 TNT 音效
+        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
+            this.tntFuseSound = this.sound.add('tnt_fuse', { volume: 0.4, rate: 1 });
+            this.explosionSound = this.sound.add('explosion', { volume: 0.6, rate: 1 });
+        }
     }
     
     playMeleeSound() {
@@ -331,6 +400,46 @@ export class GameScene extends Phaser.Scene {
             
             const state = this.room.state;
             const $ = getStateCallbacks(this.room);
+
+            // Explosion Effect Listener
+            this.room.onMessage("explosion", (data: { x: number, y: number, radius: number }) => {
+                // Play Explosion Sound
+                if (this.explosionSound) {
+                    this.explosionSound.play();
+                }
+
+                // Visual explosion
+                const explosion = this.add.circle(data.x, data.y, 10, 0xFFAA00, 0.8);
+                explosion.setDepth(20);
+                
+                this.tweens.add({
+                    targets: explosion,
+                    scale: data.radius / 10, // Scale to match radius
+                    alpha: 0,
+                    duration: 400,
+                    ease: 'Quad.out',
+                    onComplete: () => explosion.destroy()
+                });
+                
+                // Shockwave
+                const shockwave = this.add.circle(data.x, data.y, data.radius, 0xFFFFFF, 0.5);
+                shockwave.setDepth(20);
+                shockwave.setStrokeStyle(4, 0xFFFFFF);
+                shockwave.setFillStyle(0xFFFFFF, 0);
+                shockwave.setScale(0);
+                
+                this.tweens.add({
+                    targets: shockwave,
+                    scale: 1.2,
+                    alpha: 0,
+                    duration: 300,
+                    ease: 'Quad.out',
+                    onComplete: () => shockwave.destroy()
+                });
+                
+                // Camera shake
+                this.cameras.main.shake(200, 0.01);
+            });
 
             $(state).entities.onAdd((entity, id) => {
                 let visual;
@@ -762,6 +871,30 @@ export class GameScene extends Phaser.Scene {
         
         const blockRect = this.add.rectangle(0, 0, GAME_CONFIG.blockSize, GAME_CONFIG.blockSize, color);
         container.add(blockRect);
+        
+        // TNT Visuals
+        if (blockType === ItemType.TNT) {
+            const text = this.add.text(0, 0, "TNT", {
+                fontSize: '16px',
+                fontStyle: 'bold',
+                color: '#ffffff'
+            }).setOrigin(0.5);
+            container.add(text);
+            
+            // Flashing animation
+            this.tweens.add({
+                targets: blockRect,
+                alpha: 0.5,
+                duration: 500,
+                yoyo: true,
+                repeat: -1
+            });
+            
+            // Play Fuse Sound
+            if (this.tntFuseSound) {
+                this.tntFuseSound.play();
+            }
+        }
         
         // Neutral blocks - use gray health bar
         const healthBarColor = 0x888888;

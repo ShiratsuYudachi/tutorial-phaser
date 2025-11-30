@@ -17,6 +17,9 @@ export enum ItemType {
     
     // 投掷物
     ENDER_PEARL = 'ender_pearl',
+
+    // 爆炸物
+    TNT = 'tnt',
     
     // 方块
     WOOD = 'wood',
@@ -32,7 +35,7 @@ export enum ItemType {
 // 精确的类型别名
 export type AmmoItem = ItemType.ARROW | ItemType.FIREBALL_AMMO | ItemType.DART_AMMO | ItemType.ENDER_PEARL;
 export type MeleeItem = ItemType.SWORD;
-export type BlockItem = ItemType.WOOD | ItemType.STONE | ItemType.DIAMOND;
+export type BlockItem = ItemType.WOOD | ItemType.STONE | ItemType.DIAMOND | ItemType.TNT;
 export type CurrencyItem = ItemType.GOLD_INGOT;
 export type EmptyItem = ItemType.EMPTY;
 // 保留旧类型用于子弹类型标识
@@ -55,7 +58,8 @@ export const MELEE = new Set<MeleeItem>([
 export const BLOCKS = new Set<BlockItem>([
     ItemType.WOOD,
     ItemType.STONE,
-    ItemType.DIAMOND
+    ItemType.DIAMOND,
+    ItemType.TNT
 ]);
 
 // 货币集合
@@ -101,7 +105,8 @@ export const MeleeType = {
 export const BlockType = {
     WOOD: ItemType.WOOD,
     STONE: ItemType.STONE,
-    DIAMOND: ItemType.DIAMOND
+    DIAMOND: ItemType.DIAMOND,
+    TNT: ItemType.TNT
 } as const;
 
 export const SpecialItemType = {
@@ -189,6 +194,10 @@ export const ITEM_DEFINITIONS: Record<ItemType, {
         maxStack: 64, name: 'Diamond', color: 0x00CED1, icon: 'game-icons:cut-diamond',
         droppedVisual: { shape: 'diamond', size: 16, glowSize: 22 }
     },
+    [ItemType.TNT]: { 
+        maxStack: 16, name: 'TNT', color: 0xFF0000, icon: 'game-icons:dynamite',
+        droppedVisual: { shape: 'square', size: 16, glowSize: 22 }
+    },
     // 旧武器类型（保留用于兼容，实际显示为弹药）
     [ItemType.BOW]: { 
         maxStack: 1, name: 'Bow', color: 0xffff00, icon: 'game-icons:bow-arrow',
@@ -264,6 +273,11 @@ export const BLOCK_CONFIG: Record<BlockItem, { maxHP: number, color: number, nam
         maxHP: 150,       // 降低耐久
         color: 0x00CED1,
         name: '钻石方块'
+    },
+    [ItemType.TNT]: {
+        maxHP: 20,        // 极低耐久，易被诱爆
+        color: 0xFF0000,
+        name: 'TNT'
     }
 };
 
@@ -321,6 +335,12 @@ export const GAME_CONFIG = {
     
     // 建造期限制
     buildingPhaseRadius: 200,        // 建造期玩家只能在床附近200px范围内活动
+    
+    // TNT 配置
+    tntFuseTime: 3000,      // 3秒引信
+    tntExplosionRadius: 120, // 爆炸半径
+    tntDamage: 80,          // 爆炸伤害
+    tntKnockback: 25,       // 爆炸击退
 };
 
 // Matter.js 碰撞位掩码 (Bit Mask)
@@ -415,6 +435,13 @@ export const SHOP_TRADES: ShopTrade[] = [
         reward: { itemType: ItemType.DIAMOND, count: 4 },
         name: 'Buy Diamond (4x)',
         description: 'Strongest building material'
+    },
+    {
+        id: 'buy_tnt',
+        cost: { itemType: ItemType.GOLD_INGOT, count: 3 },
+        reward: { itemType: ItemType.TNT, count: 1 },
+        name: 'Buy TNT',
+        description: 'Explodes after 3 seconds'
     }
 ];
 
