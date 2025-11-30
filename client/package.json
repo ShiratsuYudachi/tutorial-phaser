@@ -14,7 +14,8 @@
   "author": "Endel Dreyer",
   "license": "MIT",
   "alias": {
-    "process": false
+    "process": false,
+    "buffer": "buffer"
   },
   "devDependencies": {
     "buffer": "^6.0.3",
@@ -24,6 +25,7 @@
   },
   "dependencies": {
     "@iconify/react": "^6.0.2",
+    "buffer": "^6.0.3",
     "colyseus.js": "^0.16.0",
     "phaser": "^3.55.2",
     "react": "^19.2.0",
