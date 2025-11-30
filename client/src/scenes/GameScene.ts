@@ -391,6 +391,31 @@ export class GameScene extends Phaser.Scene {
 
             $(state).entities.onRemove((entity, id) => {
                 const visual = this.entityVisuals.get(id);
+                
+                // Teleport visual effect for Ender Pearl
+                if ((entity instanceof Bullet || entity.type === 'bullet')) {
+                    const bullet = entity as Bullet;
+                    if (bullet.weaponType === ItemType.ENDER_PEARL) {
+                        // Create particle effect at last position
+                        const x = visual ? visual.x : entity.x;
+                        const y = visual ? visual.y : entity.y;
+                        
+                        // Purple burst effect
+                        for(let i = 0; i < 15; i++) {
+                            const p = this.add.circle(x, y, Phaser.Math.Between(3, 6), 0x8B00FF);
+                            this.tweens.add({
+                                targets: p,
+                                x: x + (Math.random() - 0.5) * 80,
+                                y: y + (Math.random() - 0.5) * 80,
+                                alpha: 0,
+                                scale: 0,
+                                duration: Phaser.Math.Between(400, 600),
+                                onComplete: () => p.destroy()
+                            });
+                        }
+                    }
+                }
+
                 if (visual) {
                     visual.destroy();
                     this.entityVisuals.delete(id);
@@ -698,6 +723,22 @@ export class GameScene extends Phaser.Scene {
                     duration: 500,
                     repeat: -1,
                     ease: 'Linear'
+                });
+                break;
+            }
+            
+            case ItemType.ENDER_PEARL: {
+                // Ender Pearl - purple circle with particles
+                const core = this.add.circle(0, 0, 5, 0x8B00FF);
+                const glow1 = this.add.circle(0, 0, 7, 0xA020F0).setAlpha(0.7);
+                const glow2 = this.add.circle(0, 0, 9, 0x9370DB).setAlpha(0.4);
+                
+                container.add([glow2, glow1, core]);
+                
+                // Animation
+                this.tweens.add({
+                    targets: [glow1, glow2],
+                    scaleX: 1.3, scaleY: 1.3, alpha: 0.2, duration: 400, yoyo: true, repeat: -1
                 });
                 break;
             }

@@ -452,6 +452,26 @@ export class GameRoom extends Room<GameState> {
             const bullet = this.state.entities.get(bulletId) as Bullet;
             if (!bullet) return;
 
+            // --- ENDER PEARL LOGIC ---
+            if (bullet.weaponType === ItemType.ENDER_PEARL) {
+                // Ignore self-collision
+                if (otherBody.label === `player_${bullet.ownerId}`) return;
+
+                const owner = this.state.entities.get(bullet.ownerId) as Player;
+                if (owner && !owner.isDead) {
+                     const agent = this.agents.get(bullet.ownerId);
+                     if (agent) {
+                         // Teleport!
+                         Matter.Body.setPosition(agent.body, { x: bulletBody.position.x, y: bulletBody.position.y });
+                         Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
+                         
+                         console.log(`Teleported player ${bullet.ownerId}`);
+                     }
+                }
+                this.removeBullet(bulletId);
+                return; // Skip other collision logic
+            }
+
             // 子弹击中玩家
             if (otherBody.label.startsWith('player_')) {
                 const targetCharacterId = otherBody.label.substring(7);
