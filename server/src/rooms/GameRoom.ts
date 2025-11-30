@@ -1073,6 +1073,26 @@ export class GameRoom extends Room<GameState> {
             Matter.Body.setVelocity(agent.body, { x: 0, y: 0 });
         }
         
+        // Check if the player has any currently active character
+        let hasActiveCharacter = false;
+        if (player.ownerSessionId) {
+            for (const [id, entity] of this.state.entities) {
+                if (entity.type === EntityType.PLAYER) {
+                    const p = entity as Player;
+                    if (p.ownerSessionId === player.ownerSessionId && p.isActive) {
+                        hasActiveCharacter = true;
+                        break;
+                    }
+                }
+            }
+            
+            // If no active character (e.g. all were dead), make this one active
+            if (!hasActiveCharacter) {
+                player.isActive = true;
+                console.log(`Player ${sessionId} respawned and set to ACTIVE (no other active chars)`);
+            }
+        }
+        
         console.log(`Player ${sessionId} (${player.teamId}) respawned at team spawn`);
     }
 
